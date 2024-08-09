@@ -30,11 +30,13 @@ struct SecuredMessage : public asn1::asn1c_oer_wrapper<EtsiTs103097Data_t>
 
     SecuredMessage();
     static SecuredMessage with_signed_data();
+    static SecuredMessage with_encrypted_data();
 
     uint8_t protocol_version() const;
     ItsAid its_aid() const;
     PacketVariant payload() const;
     bool is_signed() const;
+    bool is_encrypted() const;
     boost::optional<Time64> generation_time() const;
     boost::optional<Signature> signature() const;
     SignerIdentifier signer_identifier() const;
@@ -52,6 +54,15 @@ struct SecuredMessage : public asn1::asn1c_oer_wrapper<EtsiTs103097Data_t>
     void set_dummy_signature();
     void set_signer_identifier(const HashedId8&);
     void set_signer_identifier(const Certificate&);
+
+    void get_aes_ccm_ciphertext(ByteBuffer& ccm_ciphertext, std::array<uint8_t, 12>& nonce) const;
+    void set_aes_ccm_ciphertext(const ByteBuffer& ccm_ciphertext, const std::array<uint8_t, 12>& nonce);
+    void set_cert_recip_info(const HashedId8& recipient_id,
+                             const KeyType curve_type,
+                             const std::array<uint8_t, 16>& ecies_ciphertext,
+                             const std::array<uint8_t, 16>& ecies_tag,
+                             const ecdsa256::PublicKey& ecies_pub_key);
+    bool check_psk_match(const std::array<uint8_t, 16>& psk) const;
 };
 
 /**
