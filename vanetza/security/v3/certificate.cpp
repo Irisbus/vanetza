@@ -85,6 +85,38 @@ boost::optional<PublicKey> get_public_key(const EtsiTs103097Certificate_t& cert)
     }
 }
 
+boost::optional<PublicKey> get_public_encryption_key(const EtsiTs103097Certificate_t& cert)
+{
+    const PublicEncryptionKey* indicator = cert.toBeSigned.encryptionKey;
+    if (indicator->supportedSymmAlg != SymmAlgorithm_aes128Ccm) {
+        return boost::none;
+    }
+
+    const BasePublicEncryptionKey& input = cert.toBeSigned.encryptionKey->publicKey;
+    PublicKey output;
+    switch (input.present) {
+        case BasePublicEncryptionKey_PR_eciesNistP256:
+            output.type = KeyType::NistP256;
+            if (copy_curve_point(output, input.choice.eciesNistP256)) {
+                return output;
+            } else {
+                return boost::none;
+            }
+            break;
+        case BasePublicEncryptionKey_PR_eciesBrainpoolP256r1:
+            output.type = KeyType::BrainpoolP256r1;
+            if (copy_curve_point(output, input.choice.eciesBrainpoolP256r1)) {
+                return output;
+            } else {
+                return boost::none;
+            }
+            break;
+        default:
+            return boost::none;
+            break;
+    }
+}
+
 ByteBuffer get_app_permissions(const EtsiTs103097Certificate_t& cert, ItsAid aid)
 {
     ByteBuffer perms;
