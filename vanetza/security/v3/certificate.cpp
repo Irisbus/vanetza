@@ -87,12 +87,12 @@ boost::optional<PublicKey> get_public_key(const EtsiTs103097Certificate_t& cert)
 
 boost::optional<PublicKey> get_public_encryption_key(const EtsiTs103097Certificate_t& cert)
 {
-    const PublicEncryptionKey* indicator = cert.toBeSigned.encryptionKey;
-    if (indicator->supportedSymmAlg != SymmAlgorithm_aes128Ccm) {
+    const PublicEncryptionKey* enc_key = cert.toBeSigned.encryptionKey;
+    if (!enc_key || enc_key->supportedSymmAlg != SymmAlgorithm_aes128Ccm) {
         return boost::none;
     }
 
-    const BasePublicEncryptionKey& input = cert.toBeSigned.encryptionKey->publicKey;
+    const BasePublicEncryptionKey& input = enc_key->publicKey;
     PublicKey output;
     switch (input.present) {
         case BasePublicEncryptionKey_PR_eciesNistP256:
