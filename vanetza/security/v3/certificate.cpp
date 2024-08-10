@@ -85,21 +85,6 @@ boost::optional<PublicKey> get_public_key(const EtsiTs103097Certificate_t& cert)
     }
 }
 
-boost::optional<KeyType> get_public_key_type(const EtsiTs103097Certificate_t& cert)
-{
-    const PublicEncryptionKey_t *encryption_key = cert.toBeSigned.encryptionKey;
-    if (encryption_key == nullptr) return boost::none;
-
-    switch (encryption_key->publicKey.present){
-        case BasePublicEncryptionKey_PR_eciesNistP256:
-            return KeyType::NistP256;
-        case BasePublicEncryptionKey_PR_eciesBrainpoolP256r1:
-            return KeyType::BrainpoolP256r1;
-        default:
-            return boost::none;
-    }
-}
-
 ByteBuffer get_app_permissions(const EtsiTs103097Certificate_t& cert, ItsAid aid)
 {
     ByteBuffer perms;

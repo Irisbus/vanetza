@@ -45,13 +45,6 @@ boost::optional<HashedId8> calculate_hash(const EtsiTs103097Certificate_t& cert)
 boost::optional<PublicKey> get_public_key(const EtsiTs103097Certificate_t& cert);
 
 /**
- * Extract the type of the public key out of a certificate
- * \param cert certificate
- * \return public key type if possible
- */
-boost::optional<KeyType> get_public_key_type(const EtsiTs103097Certificate_t& cert);
-
-/**
  * Get application permissions (SSP = service specific permissions)
  * \param cert certificate containing application permissions
  * \param aid look up permissions for this application identifier
