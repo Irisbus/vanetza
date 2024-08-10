@@ -51,6 +51,7 @@ add_vanetza_component(security
     v3/sign_header_policy.cpp
     v3/static_certificate_provider.cpp
     v3/persistence.cpp
+    v3/trust_store.cpp
 )
 target_link_libraries(security PUBLIC asn1 asn1_security common net)
 target_link_libraries(security PRIVATE GeographicLib::GeographicLib)

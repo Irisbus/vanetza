@@ -25,6 +25,8 @@ struct Certificate : public asn1::asn1c_oer_wrapper<EtsiTs103097Certificate_t>
 
     void set_signature(const SomeEcdsaSignature& signature);
 
+    bool issuer_is_self() const;
+
     ByteBuffer serialize();
 
     ByteBuffer convert_for_signing();
