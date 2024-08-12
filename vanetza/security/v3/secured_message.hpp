@@ -7,12 +7,14 @@
 #include <vanetza/common/archives.hpp>
 #include <vanetza/common/its_aid.hpp>
 #include <vanetza/net/packet_variant.hpp>
+#include <vanetza/security/ecdsa256.hpp>
 #include <vanetza/security/hashed_id.hpp>
 #include <vanetza/security/signature.hpp>
 #include <vanetza/security/v3/certificate.hpp>
 
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/variant/variant_fwd.hpp>
+#include <array>
 #include <cstdint>
 #include <list>
 
