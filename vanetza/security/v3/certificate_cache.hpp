@@ -1,4 +1,5 @@
 #pragma once
+#include <vanetza/common/runtime.hpp>
 #include <vanetza/security/hashed_id.hpp>
 #include <vanetza/security/v3/certificate.hpp>
 #include <unordered_map>
@@ -17,6 +18,8 @@ namespace v3
 class CertificateCache
 {
 public:
+    CertificateCache(const Runtime& rt);
+
     /**
      * Lookup certificate based on given digest
      * \param digest certificate digest
@@ -35,6 +38,7 @@ public:
 private:
     // TODO add bounded capacity and automatic removal of expired certificates
     std::unordered_map<HashedId8, Certificate> m_storage;
+    const Runtime& m_runtime;
 };
 
 } // namespace v3
