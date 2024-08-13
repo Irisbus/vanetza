@@ -5,6 +5,7 @@
 #include <vanetza/common/byte_buffer_sink.hpp>
 #include <vanetza/net/packet.hpp>
 #include <vanetza/security/backend.hpp>
+#include <vanetza/security/v3/asn1_conversions.hpp>
 #include <vanetza/security/v3/secured_message.hpp>
 
 #include <boost/iostreams/stream.hpp>
@@ -183,6 +184,21 @@ void SecuredMessage::set_generation_location(const asn1::ThreeDLocation& locatio
         m_struct->content->choice.signedData->tbsData->headerInfo.generationLocation->longitude = location.longitude;
         m_struct->content->choice.signedData->tbsData->headerInfo.generationLocation->elevation = location.elevation;
     }
+}
+
+std::list<HashedId3> SecuredMessage::get_inline_p2pcd_request() const
+{
+    std::list<HashedId3> requests;
+    if (m_struct->content->present == Vanetza_Security_Ieee1609Dot2Content_PR_signedData) {
+        const asn1::SequenceOfHashedId3* inline_p2pcd_request = m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest;
+        if (inline_p2pcd_request) {
+            for (int i = 0; i < inline_p2pcd_request->list.count; i++) {
+                HashedId3 new_elem = truncate(convert(*inline_p2pcd_request->list.array[i]));
+                requests.push_back(new_elem);
+            }
+        }
+    }
+    return requests;
 }
 
 void SecuredMessage::set_inline_p2pcd_request(std::list<HashedId3> requests)

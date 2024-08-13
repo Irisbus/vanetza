@@ -392,6 +392,38 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         return confirm;
     }
 
+    v3::CertificateProvider* cert_provider = m_context_v3.m_cert_provider;
+    v3::SignHeaderPolicy* sign_policy = m_context_v3.m_sign_policy;
+
+    // Check for P2PCD requests
+    // TODO: test this
+    if (cert_provider && sign_policy) {
+        std::list<HashedId3> requested_certs = msg.get_inline_p2pcd_request();
+        if (!requested_certs.empty()) {
+            // Calculate IDs of own certificates and certificate chain
+            auto own_cert_id = truncate(*cert_provider->own_certificate().calculate_digest());
+            auto own_chain = cert_provider->own_chain();
+            std::vector<HashedId3> own_chain_ids(own_chain.size());
+            std::transform(own_chain.begin(), own_chain.end(), own_chain_ids.begin(),
+                [](const v3::Certificate& cert) {
+                    return truncate(*cert.calculate_digest());
+                });
+
+            // Check if any of the requested certificates are available
+            for (const auto& requested_cert : requested_certs) {
+                if (own_cert_id == requested_cert) {
+                    sign_policy->request_certificate();
+                    continue;
+                }
+
+                const auto it = std::find(own_chain_ids.begin(), own_chain_ids.end(), requested_cert);
+                if (it != own_chain_ids.end()) {
+                    sign_policy->request_certificate_chain();
+                }
+            }
+        }
+    }
+
     auto gen_time = msg.generation_time();
     if (!gen_time) {
         // TS 103 097 v1.3.1 demands generation time to be always present

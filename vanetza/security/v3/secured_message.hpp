@@ -49,6 +49,7 @@ struct SecuredMessage : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Data>
     void set_generation_location(const asn1::ThreeDLocation& location);
     void set_payload(ByteBuffer& payload);
     void set_signature(const Signature& signature);
+    std::list<HashedId3> get_inline_p2pcd_request() const;
     void set_inline_p2pcd_request(std::list<HashedId3> requests);
     void add_inline_p2pcd_request(HashedId3 unkown_certificate_digest);
     void set_signature(const SomeEcdsaSignature& signature);
