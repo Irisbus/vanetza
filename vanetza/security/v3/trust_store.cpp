@@ -15,7 +15,7 @@ void TrustStore::insert(const Certificate& certificate)
         throw std::runtime_error("Only root certificate authorities may be added to the trust store");
     }
 
-    auto id = calculate_hash(*certificate);
+    auto id = certificate.calculate_digest();
     if (!id) {
         throw std::runtime_error("Cannot calculate hash for certificate");
     }

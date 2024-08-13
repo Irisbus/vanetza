@@ -125,27 +125,26 @@ boost::optional<PublicKey> get_public_key(const asn1::EtsiTs103097Certificate& c
     }
 }
 
-boost::optional<PublicKey> get_public_encryption_key(const EtsiTs103097Certificate_t& cert)
+boost::optional<PublicKey> get_public_encryption_key(const asn1::EtsiTs103097Certificate& cert)
 {
-    const PublicEncryptionKey* enc_key = cert.toBeSigned.encryptionKey;
-    if (!enc_key || enc_key->supportedSymmAlg != SymmAlgorithm_aes128Ccm) {
+    const asn1::PublicEncryptionKey* enc_key = cert.toBeSigned.encryptionKey;
+    if (!enc_key || enc_key->supportedSymmAlg != Vanetza_Security_SymmAlgorithm_aes128Ccm) {
         return boost::none;
     }
 
-    const BasePublicEncryptionKey& input = enc_key->publicKey;
     PublicKey output;
-    switch (input.present) {
-        case BasePublicEncryptionKey_PR_eciesNistP256:
+    switch (enc_key->publicKey.present) {
+        case Vanetza_Security_BasePublicEncryptionKey_PR_eciesNistP256:
             output.type = KeyType::NistP256;
-            if (copy_curve_point(output, input.choice.eciesNistP256)) {
+            if (copy_curve_point(output, enc_key->publicKey.choice.eciesNistP256)) {
                 return output;
             } else {
                 return boost::none;
             }
             break;
-        case BasePublicEncryptionKey_PR_eciesBrainpoolP256r1:
+        case Vanetza_Security_BasePublicEncryptionKey_PR_eciesBrainpoolP256r1:
             output.type = KeyType::BrainpoolP256r1;
-            if (copy_curve_point(output, input.choice.eciesBrainpoolP256r1)) {
+            if (copy_curve_point(output, enc_key->publicKey.choice.eciesBrainpoolP256r1)) {
                 return output;
             } else {
                 return boost::none;
@@ -325,7 +324,7 @@ void Certificate::set_signature(const SomeEcdsaSignature& signature)
 }
 
 bool Certificate::issuer_is_self() const {
-    return m_struct->issuer.present == IssuerIdentifier_PR_self;
+    return m_struct->issuer.present == Vanetza_Security_IssuerIdentifier_PR_self;
 }
 
 Certificate fake_certificate()

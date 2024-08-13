@@ -65,9 +65,9 @@ boost::optional<KeyType> get_verification_key_type(const asn1::EtsiTs103097Certi
 /**
  * Extract the public key for encrypting out of a certificate
  * \param cert certificate
- * \return public key type if possible
+ * \return encryption key if possible
  */
-boost::optional<PublicKey> get_public_encryption_key(const EtsiTs103097Certificate_t& cert);
+boost::optional<PublicKey> get_public_encryption_key(const asn1::EtsiTs103097Certificate& cert);
 
 /**
  * Get application permissions (SSP = service specific permissions)
