@@ -481,16 +481,6 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         }
         return confirm;
     }
-    v3::Certificate at_cert;
-    *at_cert = *certificate;
-    if (cert_validator) {
-        CertificateValidity validity = cert_validator->check_certificate(at_cert);
-        if (!validity) {
-            confirm.report = VerificationReport::Invalid_Certificate;
-            confirm.certificate_validity = validity;
-            return confirm;
-        }
-    }
 
     auto public_key = v3::get_public_key(*certificate);
     if (!public_key) {
@@ -505,6 +495,17 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
     } catch (...) {
         confirm.report = VerificationReport::Invalid_Certificate;
         return confirm;
+    }
+
+    v3::Certificate at_cert;
+    at_cert.decode(encoded_cert);
+    if (cert_validator) {
+        CertificateValidity validity = cert_validator->check_certificate(at_cert);
+        if (!validity) {
+            confirm.report = VerificationReport::Invalid_Certificate;
+            confirm.certificate_validity = validity;
+            return confirm;
+        }
     }
 
     ByteBuffer data_hash = m_backend.calculate_hash(public_key->type, msg.signing_payload());
