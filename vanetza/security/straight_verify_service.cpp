@@ -393,6 +393,7 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
     }
 
     v3::CertificateProvider* cert_provider = m_context_v3.m_cert_provider;
+    v3::CertificateCache* cert_cache = m_context_v3.m_cert_cache;
     v3::SignHeaderPolicy* sign_policy = m_context_v3.m_sign_policy;
 
     // Check for P2PCD requests
@@ -460,11 +461,17 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         }
 
         v3::CertificateCache* m_cache;
-    } certificate_lookup_visitor(m_context_v3.m_cert_cache);
+    } certificate_lookup_visitor(cert_cache);
     auto signer_identifier = msg.signer_identifier();
     const v3::asn1::Certificate* certificate = boost::apply_visitor(certificate_lookup_visitor, signer_identifier);
     if (!certificate) {
         confirm.report = VerificationReport::Signer_Certificate_Not_Found;
+        if (sign_policy) {
+            auto cert_hash = v3::get_certificate_id(signer_identifier);
+            if (cert_hash) {
+                sign_policy->request_unrecognized_certificate(*cert_hash);
+            }
+        }
         return confirm;
     }
     // TODO check AT certificate's validity
