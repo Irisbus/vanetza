@@ -14,6 +14,7 @@
 #include <vanetza/security/v3/asn1_types.hpp>
 #include <vanetza/security/v3/certificate_cache.hpp>
 #include <vanetza/security/v3/certificate_provider.hpp>
+#include <vanetza/security/v3/certificate_validator.hpp>
 #include <vanetza/security/v3/sign_header_policy.hpp>
 #include <boost/optional.hpp>
 
@@ -82,6 +83,11 @@ void StraightVerifyService::use_certificate_cache(v3::CertificateCache* cache)
 void StraightVerifyService::use_certificate_provider(v3::CertificateProvider* provider)
 {
     m_context_v3.m_cert_provider = provider;
+}
+
+void StraightVerifyService::use_certificate_validator(v3::CertificateValidator* validator)
+{
+    m_context_v3.m_cert_validator = validator;
 }
 
 void StraightVerifyService::use_sign_header_policy(v3::SignHeaderPolicy* policy)
@@ -394,6 +400,7 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
 
     v3::CertificateProvider* cert_provider = m_context_v3.m_cert_provider;
     v3::CertificateCache* cert_cache = m_context_v3.m_cert_cache;
+    v3::CertificateValidator* cert_validator = m_context_v3.m_cert_validator;
     v3::SignHeaderPolicy* sign_policy = m_context_v3.m_sign_policy;
 
     // Check for P2PCD requests
@@ -474,7 +481,16 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         }
         return confirm;
     }
-    // TODO check AT certificate's validity
+    v3::Certificate at_cert;
+    *at_cert = *certificate;
+    if (cert_validator) {
+        CertificateValidity validity = cert_validator->check_certificate(at_cert);
+        if (!validity) {
+            confirm.report = VerificationReport::Invalid_Certificate;
+            confirm.certificate_validity = validity;
+            return confirm;
+        }
+    }
 
     auto public_key = v3::get_public_key(*certificate);
     if (!public_key) {

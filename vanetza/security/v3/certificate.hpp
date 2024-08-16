@@ -26,6 +26,7 @@ struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificat
 
     void set_signature(const SomeEcdsaSignature& signature);
 
+    HashedId8 get_issuer_identifier() const;
     bool issuer_is_self() const;
 
     /**
@@ -68,6 +69,13 @@ boost::optional<KeyType> get_verification_key_type(const asn1::EtsiTs103097Certi
  * \return encryption key if possible
  */
 boost::optional<PublicKey> get_public_encryption_key(const asn1::EtsiTs103097Certificate& cert);
+
+/**
+ * Extract the signature out of a certificate
+ * \param cert certificate
+ * \return signature if possible
+ */
+boost::optional<Signature> get_signature(const asn1::EtsiTs103097Certificate& cert);
 
 /**
  * Get application permissions (SSP = service specific permissions)

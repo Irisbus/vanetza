@@ -45,6 +45,7 @@ add_vanetza_component(security
     v3/asn1_conversions.cpp
     v3/certificate.cpp
     v3/certificate_cache.cpp
+    v3/default_certificate_validator.cpp
     v3/secured_message.cpp
     v3/sign_service.cpp
     v3/naive_certificate_provider.cpp

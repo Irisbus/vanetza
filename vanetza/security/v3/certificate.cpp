@@ -1,3 +1,4 @@
+#include <vanetza/security/v3/asn1_conversions.hpp>
 #include <vanetza/security/sha.hpp>
 #include <vanetza/security/v3/certificate.hpp>
 #include <boost/optional/optional.hpp>
@@ -15,6 +16,8 @@ namespace
 bool copy_curve_point(PublicKey& to, const asn1::EccP256CurvePoint& from);
 bool copy_curve_point(PublicKey& to, const asn1::EccP384CurvePoint& from);
 ByteBuffer fetch_octets(const OCTET_STRING_t& octets);
+ByteBuffer get_x_coordinate(const asn1::EccP256CurvePoint& point);
+ByteBuffer get_x_coordinate(const asn1::EccP384CurvePoint& point);
 }
 
 Certificate::Certificate() :
@@ -154,6 +157,37 @@ boost::optional<PublicKey> get_public_encryption_key(const asn1::EtsiTs103097Cer
             return boost::none;
             break;
     }
+}
+
+boost::optional<Signature> get_signature(const asn1::EtsiTs103097Certificate& cert)
+{
+    if (!cert.signature) {
+        return boost::none;
+    }
+
+    const asn1::Signature* asn = cert.signature;
+    Signature sig;
+    switch (asn->present) {
+        case Vanetza_Security_Signature_PR_ecdsaNistP256Signature:
+            sig.type = KeyType::NistP256;
+            sig.r = get_x_coordinate(asn->choice.ecdsaNistP256Signature.rSig);
+            sig.s = fetch_octets(asn->choice.ecdsaNistP256Signature.sSig);
+            break;
+        case Vanetza_Security_Signature_PR_ecdsaBrainpoolP256r1Signature:
+            sig.type = KeyType::BrainpoolP256r1;
+            sig.r = get_x_coordinate(asn->choice.ecdsaBrainpoolP256r1Signature.rSig);
+            sig.s = fetch_octets(asn->choice.ecdsaBrainpoolP256r1Signature.sSig);
+            break;
+        case Vanetza_Security_Signature_PR_ecdsaBrainpoolP384r1Signature:
+            sig.type = KeyType::BrainpoolP384r1;
+            sig.r = get_x_coordinate(asn->choice.ecdsaBrainpoolP384r1Signature.rSig);
+            sig.s = fetch_octets(asn->choice.ecdsaBrainpoolP384r1Signature.sSig);
+            break;
+        default:
+            return boost::none;
+    }
+
+    return sig;
 }
 
 ByteBuffer get_app_permissions(const asn1::EtsiTs103097Certificate& cert, ItsAid aid)
@@ -323,7 +357,21 @@ void Certificate::set_signature(const SomeEcdsaSignature& signature)
     m_struct->signature = boost::apply_visitor(signature_visitor(), signature);
 }
 
-bool Certificate::issuer_is_self() const {
+HashedId8 Certificate::get_issuer_identifier() const
+{
+    switch (m_struct->issuer.present) {
+        case Vanetza_Security_IssuerIdentifier_PR_self:
+        default:
+            return HashedId8({0,0,0,0,0,0,0,0});
+        case Vanetza_Security_IssuerIdentifier_PR_sha256AndDigest:
+            return convert(m_struct->issuer.choice.sha256AndDigest);
+        case Vanetza_Security_IssuerIdentifier_PR_sha384AndDigest:
+            return convert(m_struct->issuer.choice.sha384AndDigest);
+    }
+}
+
+bool Certificate::issuer_is_self() const
+{
     return m_struct->issuer.present == Vanetza_Security_IssuerIdentifier_PR_self;
 }
 
@@ -421,6 +469,38 @@ ByteBuffer fetch_octets(const OCTET_STRING_t& octets)
     ByteBuffer buffer(octets.size);
     std::memcpy(buffer.data(), octets.buf, octets.size);
     return buffer;
+}
+
+ByteBuffer get_x_coordinate(const asn1::EccP256CurvePoint& point)
+{
+    switch (point.present) {
+        case Vanetza_Security_EccP256CurvePoint_PR_compressed_y_0:
+            return fetch_octets(point.choice.compressed_y_0);
+        case Vanetza_Security_EccP256CurvePoint_PR_compressed_y_1:
+            return fetch_octets(point.choice.compressed_y_1);
+        case Vanetza_Security_EccP256CurvePoint_PR_x_only:
+            return fetch_octets(point.choice.x_only);
+        case Vanetza_Security_EccP256CurvePoint_PR_uncompressedP256:
+            return fetch_octets(point.choice.uncompressedP256.x);
+        default:
+            return ByteBuffer {};
+    }
+}
+
+ByteBuffer get_x_coordinate(const asn1::EccP384CurvePoint& point)
+{
+    switch (point.present) {
+        case Vanetza_Security_EccP384CurvePoint_PR_compressed_y_0:
+            return fetch_octets(point.choice.compressed_y_0);
+        case Vanetza_Security_EccP384CurvePoint_PR_compressed_y_1:
+            return fetch_octets(point.choice.compressed_y_1);
+        case Vanetza_Security_EccP384CurvePoint_PR_x_only:
+            return fetch_octets(point.choice.x_only);
+        case Vanetza_Security_EccP384CurvePoint_PR_uncompressedP384:
+            return fetch_octets(point.choice.uncompressedP384.x);
+        default:
+            return ByteBuffer {};
+    }
 }
 
 } // namespace
