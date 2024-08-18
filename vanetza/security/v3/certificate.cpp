@@ -360,13 +360,18 @@ void Certificate::set_signature(const SomeEcdsaSignature& signature)
 HashedId8 Certificate::get_issuer_identifier() const
 {
     switch (m_struct->issuer.present) {
-        case Vanetza_Security_IssuerIdentifier_PR_self:
-        default:
+        case Vanetza_Security_IssuerIdentifier_PR_self: {
+            auto own_hash = calculate_digest();
+            if (own_hash)
+                return *own_hash;
             return HashedId8({0,0,0,0,0,0,0,0});
+        }
         case Vanetza_Security_IssuerIdentifier_PR_sha256AndDigest:
             return convert(m_struct->issuer.choice.sha256AndDigest);
         case Vanetza_Security_IssuerIdentifier_PR_sha384AndDigest:
             return convert(m_struct->issuer.choice.sha384AndDigest);
+        default:
+            return HashedId8({0,0,0,0,0,0,0,0});
     }
 }
 
