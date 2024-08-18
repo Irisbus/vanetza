@@ -476,6 +476,7 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         if (sign_policy) {
             auto cert_hash = v3::get_certificate_id(signer_identifier);
             if (cert_hash) {
+                confirm.certificate_id = *cert_hash;
                 sign_policy->request_unrecognized_certificate(*cert_hash);
             }
         }
