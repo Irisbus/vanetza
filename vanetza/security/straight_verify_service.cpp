@@ -503,10 +503,10 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         return confirm;
     }
 
-    v3::Certificate at_cert;
-    at_cert.decode(encoded_cert);
+    v3::Certificate cert;
+    cert.decode(encoded_cert);
     if (cert_validator) {
-        CertificateValidity validity = cert_validator->check_certificate(at_cert);
+        CertificateValidity validity = cert_validator->check_certificate(cert);
         if (!validity) {
             confirm.report = VerificationReport::Invalid_Certificate;
             confirm.certificate_validity = validity;
@@ -523,6 +523,10 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
     if (!m_backend.verify_digest(*public_key, msg_hash, *signature)) {
         confirm.report = VerificationReport::False_Signature;
         return confirm;
+    }
+
+    if (cert_cache) {
+        cert_cache->store(cert);
     }
 
     confirm.its_aid = msg.its_aid();
