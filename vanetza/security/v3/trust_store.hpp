@@ -1,4 +1,4 @@
-
+#pragma once
 #include <vanetza/security/hashed_id.hpp>
 #include <vanetza/security/v3/certificate.hpp>
 #include <list>
