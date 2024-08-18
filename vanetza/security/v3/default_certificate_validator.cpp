@@ -66,7 +66,7 @@ CertificateValidity DefaultCertificateValidator::check_certificate(const Certifi
     for (auto& possible_signer : trust_store_matches) {
         auto verification_key = get_public_key(*possible_signer);
         if (verification_key) {
-            ByteBuffer signer_hash = m_backend.calculate_hash(verification_key->type, signer_cert->encode());
+            ByteBuffer signer_hash = m_backend.calculate_hash(verification_key->type, possible_signer.encode());
             ByteBuffer cert_hash = m_backend.calculate_hash(verification_key->type, cert_buf);
             ByteBuffer concat_hash = signer_hash;
             concat_hash.insert(concat_hash.end(), cert_hash.begin(), cert_hash.end());
