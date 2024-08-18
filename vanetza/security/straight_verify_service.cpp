@@ -479,6 +479,11 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
                 confirm.certificate_id = *cert_hash;
                 sign_policy->request_unrecognized_certificate(*cert_hash);
             }
+            // If message is signed by unknown AT, include certificate in next CAM
+            // See TS 103 097 v2.1.1, section 7.1.1, 1st bullet, 3rd dash
+            if (msg.its_aid() == aid::CA) {
+                sign_policy->request_certificate();
+            }
         }
         return confirm;
     }
