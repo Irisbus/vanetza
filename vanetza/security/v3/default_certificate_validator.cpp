@@ -35,7 +35,7 @@ CertificateValidity DefaultCertificateValidator::check_certificate(const Certifi
         return CertificateInvalidReason::Missing_Signature;
     }
 
-    ByteBuffer cert_buf = certificate.encode();
+    ByteBuffer cert_buf = asn1::encode_oer(asn_DEF_Vanetza_Security_ToBeSignedCertificate, &certificate->toBeSigned);
 
     // Authorization tickets are signed by authorization authorities, check if
     // we have authorization authority certificate in cache
@@ -43,10 +43,10 @@ CertificateValidity DefaultCertificateValidator::check_certificate(const Certifi
     if (signer_cert) {
         auto verification_key = get_public_key(**signer_cert);
         if (verification_key) {
-            ByteBuffer signer_hash = m_backend.calculate_hash(verification_key->type, signer_cert->encode());
             ByteBuffer cert_hash = m_backend.calculate_hash(verification_key->type, cert_buf);
-            ByteBuffer concat_hash = signer_hash;
-            concat_hash.insert(concat_hash.end(), cert_hash.begin(), cert_hash.end());
+            ByteBuffer signer_hash = m_backend.calculate_hash(verification_key->type, signer_cert->encode());
+            ByteBuffer concat_hash = cert_hash;
+            concat_hash.insert(concat_hash.end(), signer_hash.begin(), signer_hash.end());
             ByteBuffer signature_input = m_backend.calculate_hash(verification_key->type, concat_hash);
 
             if (m_backend.verify_digest(*verification_key, signature_input, *sig)) {
@@ -66,10 +66,10 @@ CertificateValidity DefaultCertificateValidator::check_certificate(const Certifi
     for (auto& possible_signer : trust_store_matches) {
         auto verification_key = get_public_key(*possible_signer);
         if (verification_key) {
-            ByteBuffer signer_hash = m_backend.calculate_hash(verification_key->type, possible_signer.encode());
             ByteBuffer cert_hash = m_backend.calculate_hash(verification_key->type, cert_buf);
-            ByteBuffer concat_hash = signer_hash;
-            concat_hash.insert(concat_hash.end(), cert_hash.begin(), cert_hash.end());
+            ByteBuffer signer_hash = m_backend.calculate_hash(verification_key->type, possible_signer.encode());
+            ByteBuffer concat_hash = cert_hash;
+            concat_hash.insert(concat_hash.end(), signer_hash.begin(), signer_hash.end());
             ByteBuffer signature_input = m_backend.calculate_hash(verification_key->type, concat_hash);
 
             if (m_backend.verify_digest(*verification_key, signature_input, *sig)) {
