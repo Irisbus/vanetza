@@ -433,20 +433,17 @@ void SecuredMessage::set_cert_recip_info(const HashedId8& recipient_id,
     OCTET_STRING_fromBuf(&pk_recip_info.recipientId, reinterpret_cast<const char *>(recipient_id.data()), recipient_id.size());
 
     asn1::EncryptedDataEncryptionKey &enc_data_enc_key = pk_recip_info.encKey;
+    asn1::EciesP256EncryptedKey *ecies_enc_key_ptr;
     if (curve_type == KeyType::NistP256) {
         enc_data_enc_key.present = Vanetza_Security_EncryptedDataEncryptionKey_PR_eciesNistP256;
+        ecies_enc_key_ptr = &enc_data_enc_key.choice.eciesNistP256;
     } else if (curve_type == KeyType::BrainpoolP256r1) {
         enc_data_enc_key.present = Vanetza_Security_EncryptedDataEncryptionKey_PR_eciesBrainpoolP256r1;
+        ecies_enc_key_ptr = &enc_data_enc_key.choice.eciesBrainpoolP256r1;
     } else {
         throw std::invalid_argument("Unsupported EC curve");
     }
 
-    asn1::EciesP256EncryptedKey *ecies_enc_key_ptr;
-    if (enc_data_enc_key.present == Vanetza_Security_EncryptedDataEncryptionKey_PR_eciesNistP256) {
-        ecies_enc_key_ptr = &enc_data_enc_key.choice.eciesNistP256;
-    } else if (enc_data_enc_key.present == Vanetza_Security_EncryptedDataEncryptionKey_PR_eciesBrainpoolP256r1) {
-        ecies_enc_key_ptr = &enc_data_enc_key.choice.eciesBrainpoolP256r1;
-    }
     asn1::EciesP256EncryptedKey &ecies_enc_key = *ecies_enc_key_ptr;
     // Set ECIES ciphertext and tag
     OCTET_STRING_fromBuf(&ecies_enc_key.c, reinterpret_cast<const char *>(ecies_ciphertext.data()), ecies_ciphertext.size());
