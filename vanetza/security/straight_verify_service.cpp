@@ -387,7 +387,7 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
      */
     VerifyConfirm confirm;
     confirm.report = VerificationReport::Incompatible_Protocol; /*< fallback error code */
-    
+
     if (!msg.is_signed()) {
         confirm.report = VerificationReport::Unsigned_Message;
         return confirm;
@@ -530,7 +530,7 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
     }
 
     confirm.its_aid = msg.its_aid();
-    confirm.permissions = v3::get_app_permissions(*certificate, confirm.its_aid);
+    confirm.permissions = v3::get_app_permissions(*cert, confirm.its_aid);
     confirm.certificate_id = v3::get_certificate_id(signer_identifier);
     confirm.report = VerificationReport::Success;
     return confirm;
