@@ -394,6 +394,7 @@ void SecuredMessage::set_external_payload_hash(const Sha256Digest& hash)
     assert(m_struct->content->present == Vanetza_Security_Ieee1609Dot2Content_PR_signedData);
     asn1::HashedData* hashed_data = m_struct->content->choice.signedData->tbsData->payload->extDataHash;
     ASN_STRUCT_RESET(asn_DEF_Vanetza_Security_HashedData, hashed_data);
+    hashed_data->present = Vanetza_Security_HashedData_PR_sha256HashedData;
     OCTET_STRING_fromBuf(&hashed_data->choice.sha256HashedData, reinterpret_cast<const char*>(hash.data()), hash.size());
 }
 
