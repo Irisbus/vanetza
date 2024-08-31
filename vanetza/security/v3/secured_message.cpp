@@ -123,6 +123,20 @@ SecuredMessage SecuredMessage::with_signed_data()
     return secured_message;
 }
 
+SecuredMessage SecuredMessage::with_signed_data_hash()
+{
+    SecuredMessage secured_message;
+    secured_message->protocolVersion = 3;
+    secured_message->content = asn1::allocate<asn1::Ieee1609Dot2Content>();
+    secured_message->content->present = Vanetza_Security_Ieee1609Dot2Content_PR_signedData;
+    secured_message->content->choice.signedData = asn1::allocate<asn1::SignedData>();
+    secured_message->content->choice.signedData->tbsData = asn1::allocate<asn1:: ToBeSignedData>();
+    secured_message->content->choice.signedData->tbsData->payload = asn1::allocate<asn1::SignedDataPayload>();
+    secured_message->content->choice.signedData->tbsData->payload->extDataHash = asn1::allocate<asn1::HashedData>();
+    secured_message->content->choice.signedData->tbsData->payload->extDataHash->present = Vanetza_Security_HashedData_PR_sha256HashedData;
+    return secured_message;
+}
+
 SecuredMessage SecuredMessage::with_encrypted_data()
 {
     SecuredMessage secured_message;

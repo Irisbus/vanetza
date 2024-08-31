@@ -32,6 +32,7 @@ struct SecuredMessage : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Data>
 
     SecuredMessage();
     static SecuredMessage with_signed_data();
+    static SecuredMessage with_signed_data_hash();
     static SecuredMessage with_encrypted_data();
 
     uint8_t protocol_version() const;
