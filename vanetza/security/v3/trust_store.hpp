@@ -28,7 +28,7 @@ public:
      */
     void insert(const Certificate& trusted_certificate);
 
-private:
+protected:
     std::multimap<HashedId8, Certificate> m_certificates;
 };
 
