@@ -114,7 +114,7 @@ SecuredMessage SecuredMessage::with_signed_data()
     secured_message->content = asn1::allocate<asn1::Ieee1609Dot2Content>();
     secured_message->content->present = Vanetza_Security_Ieee1609Dot2Content_PR_signedData;
     secured_message->content->choice.signedData = asn1::allocate<asn1::SignedData>();
-    secured_message->content->choice.signedData->tbsData = asn1::allocate<asn1:: ToBeSignedData>();
+    secured_message->content->choice.signedData->tbsData = asn1::allocate<asn1::ToBeSignedData>();
     secured_message->content->choice.signedData->tbsData->payload = asn1::allocate<asn1::SignedDataPayload>();
     secured_message->content->choice.signedData->tbsData->payload->data = asn1::allocate<asn1::Ieee1609Dot2Data>();
     secured_message->content->choice.signedData->tbsData->payload->data->protocolVersion = 3;
@@ -130,7 +130,7 @@ SecuredMessage SecuredMessage::with_signed_data_hash()
     secured_message->content = asn1::allocate<asn1::Ieee1609Dot2Content>();
     secured_message->content->present = Vanetza_Security_Ieee1609Dot2Content_PR_signedData;
     secured_message->content->choice.signedData = asn1::allocate<asn1::SignedData>();
-    secured_message->content->choice.signedData->tbsData = asn1::allocate<asn1:: ToBeSignedData>();
+    secured_message->content->choice.signedData->tbsData = asn1::allocate<asn1::ToBeSignedData>();
     secured_message->content->choice.signedData->tbsData->payload = asn1::allocate<asn1::SignedDataPayload>();
     secured_message->content->choice.signedData->tbsData->payload->extDataHash = asn1::allocate<asn1::HashedData>();
     secured_message->content->choice.signedData->tbsData->payload->extDataHash->present = Vanetza_Security_HashedData_PR_sha256HashedData;
