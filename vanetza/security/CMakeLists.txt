@@ -44,6 +44,7 @@ add_vanetza_component(security
     v2/validity_restriction.cpp
     v2/verification.cpp
     v3/asn1_conversions.cpp
+    v3/basic_elements.cpp
     v3/certificate.cpp
     v3/certificate_cache.cpp
     v3/default_certificate_validator.cpp
