@@ -35,6 +35,43 @@ boost::optional<KeyType> Certificate::get_verification_key_type() const
     return v3::get_verification_key_type(*content());
 }
 
+StartAndEndValidity Certificate::get_start_and_end_validity() const
+{
+    StartAndEndValidity start_and_end;
+    start_and_end.start_validity = Time32(m_struct->toBeSigned.validityPeriod.start);
+    Time32 duration = 0;
+    switch (m_struct->toBeSigned.validityPeriod.duration.present)
+    {
+    case Vanetza_Security_Duration_PR_NOTHING:
+        break;
+    case Vanetza_Security_Duration_PR_microseconds:
+        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.microseconds/1000000;
+        break;
+    case Vanetza_Security_Duration_PR_milliseconds:
+        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.milliseconds/1000;
+        break;
+    case Vanetza_Security_Duration_PR_seconds:
+        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.seconds;
+        break;
+    case Vanetza_Security_Duration_PR_minutes:
+        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.minutes*60;
+        break;
+    case Vanetza_Security_Duration_PR_hours:
+        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.hours*60*60;
+        break;
+    case Vanetza_Security_Duration_PR_sixtyHours:
+        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.sixtyHours*60*60*60;
+        break;
+    case Vanetza_Security_Duration_PR_years:
+        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.years*60*60*24*365;
+        break;
+    default:
+        break;
+    }
+    start_and_end.end_validity = start_and_end.start_validity + duration;
+    return start_and_end;
+}
+
 boost::optional<HashedId8> calculate_digest(const asn1::EtsiTs103097Certificate& cert)
 {
     boost::optional<HashedId8> digest;

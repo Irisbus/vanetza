@@ -7,6 +7,7 @@
 #include <vanetza/security/public_key.hpp>
 #include <vanetza/security/signature.hpp>
 #include <vanetza/security/v3/asn1_types.hpp>
+#include <vanetza/security/v3/validity_restriction.hpp>
 #include <boost/optional/optional_fwd.hpp>
 
 namespace vanetza
@@ -40,6 +41,8 @@ struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificat
      * \return verification key type if possible
      */
     boost::optional<KeyType> get_verification_key_type() const;
+
+    StartAndEndValidity get_start_and_end_validity() const;
 };
 
 /**
