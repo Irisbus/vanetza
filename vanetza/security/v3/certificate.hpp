@@ -9,6 +9,7 @@
 #include <vanetza/security/v3/asn1_types.hpp>
 #include <vanetza/security/v3/validity_restriction.hpp>
 #include <boost/optional/optional_fwd.hpp>
+#include <list>
 
 namespace vanetza
 {
@@ -79,6 +80,8 @@ boost::optional<PublicKey> get_public_encryption_key(const asn1::EtsiTs103097Cer
  * \return signature if possible
  */
 boost::optional<Signature> get_signature(const asn1::EtsiTs103097Certificate& cert);
+
+std::list<ItsAid> get_aids(const asn1::EtsiTs103097Certificate& cert);
 
 /**
  * Get application permissions (SSP = service specific permissions)

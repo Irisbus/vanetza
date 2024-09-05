@@ -15,6 +15,69 @@ DefaultCertificateValidator::DefaultCertificateValidator(Backend& backend, Certi
 {
 }
 
+bool check_time_consistency(const Certificate& certificate, const Certificate& signer)
+{
+    StartAndEndValidity certificate_time = certificate.get_start_and_end_validity();
+    StartAndEndValidity signer_time = signer.get_start_and_end_validity();
+
+    if (signer_time.start_validity > certificate_time.start_validity) {
+        return false;
+    }
+
+    if (signer_time.end_validity < certificate_time.end_validity) {
+        return false;
+    }
+
+    return true;
+}
+
+bool check_permission_consistency(const Certificate& certificate, const Certificate& signer)
+{
+    auto certificate_aids = get_aids(*certificate);
+    auto signer_aids = get_aids(*signer);
+
+    auto compare = [](ItsAid a, ItsAid b) { return a < b; };
+
+    certificate_aids.sort(compare);
+    signer_aids.sort(compare);
+
+    return std::includes(signer_aids.begin(), signer_aids.end(), certificate_aids.begin(), certificate_aids.end());
+
+}
+
+bool check_subject_assurance_consistency(const Certificate& certificate, const Certificate& signer)
+{
+    // TODO
+    return true;
+}
+
+bool check_region_consistency(const Certificate& certificate, const Certificate& signer)
+{
+    // TODO
+    return true;
+}
+
+bool check_consistency(const Certificate& certificate, const Certificate& signer)
+{
+    if (!check_time_consistency(certificate, signer)) {
+        return false;
+    }
+
+    if (!check_permission_consistency(certificate, signer)) {
+        return false;
+    }
+
+    if (!check_subject_assurance_consistency(certificate, signer)) {
+        return false;
+    }
+
+    if (!check_region_consistency(certificate, signer)) {
+        return false;
+    }
+
+    return true;
+}
+
 CertificateValidity DefaultCertificateValidator::check_certificate(const Certificate& certificate)
 {
     HashedId8 signer_hash = certificate.get_issuer_identifier();
@@ -51,10 +114,22 @@ CertificateValidity DefaultCertificateValidator::check_certificate(const Certifi
 
             if (m_backend.verify_digest(*verification_key, signature_input, *sig)) {
                 // TODO check certificate consistency
+                if (!check_consistency(certificate, *signer_cert)) {
+                    return CertificateInvalidReason::Inconsistent_With_Signer;
+                }
+
                 return CertificateValidity::valid();
             }
         }
     }
+
+    // There seems to be no way of adding AA certificates to the cache as the
+    // signed message is constrained to only contain ONE certificate, which
+    // will always be the AT. This would mean that AA certificates shall be
+    // inserted into the cache when parsing RCA trust lists by calling this
+    // function with the AA certificate as argument. nfiniity's implementation
+    // however does not do this, as it believes a SignerIdentifier of type
+    // certificate chain with the complete chain is legitimate.
 
     // Authorization authority certificates must be signed by root CA, check if
     // we have root CA certificate in trust store
@@ -74,6 +149,10 @@ CertificateValidity DefaultCertificateValidator::check_certificate(const Certifi
 
             if (m_backend.verify_digest(*verification_key, signature_input, *sig)) {
                 // TODO check certificate consistency
+                if (!check_consistency(certificate, *signer_cert)) {
+                    return CertificateInvalidReason::Inconsistent_With_Signer;
+                }
+
                 return CertificateValidity::valid();
             }
         }

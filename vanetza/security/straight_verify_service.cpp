@@ -16,6 +16,7 @@
 #include <vanetza/security/v3/certificate_provider.hpp>
 #include <vanetza/security/v3/certificate_validator.hpp>
 #include <vanetza/security/v3/sign_header_policy.hpp>
+#include <vanetza/security/v3/verification.hpp>
 #include <boost/optional.hpp>
 
 namespace vanetza
@@ -438,6 +439,10 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         confirm.report = VerificationReport::Invalid_Timestamp;
         return confirm;
     }
+    if (!v3::check_generation_time(msg, m_runtime.now())) {
+        confirm.report = VerificationReport::Invalid_Timestamp;
+        return confirm;
+    }
     // TODO further generation time checks depending on application profile
 
     auto signature = msg.signature();
@@ -481,9 +486,7 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
             }
             // If message is signed by unknown AT, include certificate in next CAM
             // See TS 103 097 v2.1.1, section 7.1.1, 1st bullet, 3rd dash
-            if (msg.its_aid() == aid::CA) {
-                sign_policy->request_certificate();
-            }
+            sign_policy->request_certificate();
         }
         return confirm;
     }
@@ -514,6 +517,13 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         }
     }
 
+    // Check certificate time validity
+    if (!v3::check_certificate_time(cert, m_runtime.now())) {
+        confirm.report = VerificationReport::Invalid_Certificate;
+        confirm.certificate_validity = CertificateInvalidReason::Off_Time_Period;
+        return confirm;
+    }
+
     ByteBuffer data_hash = m_backend.calculate_hash(public_key->type, msg.signing_payload());
     ByteBuffer cert_hash = m_backend.calculate_hash(public_key->type, encoded_cert);
     ByteBuffer concat_hash = data_hash;
@@ -525,7 +535,9 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         return confirm;
     }
 
-    if (cert_cache) {
+    if (cert_cache && !cert.issuer_is_self()) {
+        printf("Adding cert to cache\n");
+        // cert.print();
         cert_cache->store(cert);
     }
 

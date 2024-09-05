@@ -56,6 +56,7 @@ add_vanetza_component(security
     v3/persistence.cpp
     v3/trust_store.cpp
     v3/validity_restriction.cpp
+    v3/verification.cpp
 )
 target_link_libraries(security PUBLIC asn1 asn1_security common net)
 target_link_libraries(security PRIVATE GeographicLib::GeographicLib)

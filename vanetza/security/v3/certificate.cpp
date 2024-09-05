@@ -227,6 +227,18 @@ boost::optional<Signature> get_signature(const asn1::EtsiTs103097Certificate& ce
     return sig;
 }
 
+std::list<ItsAid> get_aids(const asn1::EtsiTs103097Certificate& cert)
+{
+    std::list<ItsAid> aids;
+    const asn1::SequenceOfPsidSsp* seq = cert.toBeSigned.appPermissions;
+    if (seq) {
+        for (int i = 0; i < seq->list.count; ++i) {
+            aids.push_back(seq->list.array[i]->psid);
+        }
+    }
+    return aids;
+}
+
 ByteBuffer get_app_permissions(const asn1::EtsiTs103097Certificate& cert, ItsAid aid)
 {
     ByteBuffer perms;
