@@ -16,22 +16,38 @@ bool check_generation_time(const SecuredMessage& message, Clock::time_point now)
     bool valid = false;
     boost::optional<Time64> generation_time = message.generation_time();
     if (generation_time) {
-        // Values are picked from C2C-CC Basic System Profile v1.1.0, see RS_BSP_168
-        static const auto generation_time_future = milliseconds(40);
+        static const Clock::duration generation_time_future_default = milliseconds(200);
+        // Extra time to account for request/response round trip
+        static const Clock::duration generation_time_future_certs = seconds(1);
+
         static const Clock::duration generation_time_past_default = minutes(10);
         static const Clock::duration generation_time_past_ca = seconds(2);
+        // This is not specified, so we assume this is equal
+        // to the maximum validity of a CA certificate (5 years)
+        static const Clock::duration generation_time_past_ctl_crl = hours(43800);
+
+        auto generation_time_future = generation_time_future_default;
         auto generation_time_past = generation_time_past_default;
 
         const ItsAid its_aid = message.its_aid();
         if (aid::CA == its_aid) {
             generation_time_past = generation_time_past_ca;
         }
+        else if (aid::CTL == its_aid || aid::CRL == its_aid) {
+            generation_time_future = generation_time_future_certs;
+            generation_time_past = generation_time_past_ctl_crl;
+        }
+        else if (aid::SCR == its_aid) {
+            generation_time_future = generation_time_future_certs;
+        }
 
         if (*generation_time > convert_time64(now + generation_time_future)) {
             valid = false;
-        } else if (*generation_time < convert_time64(now - generation_time_past)) {
+        }
+        else if (*generation_time < convert_time64(now - generation_time_past)) {
             valid = false;
-        } else {
+        }
+        else {
             valid = true;
         }
     }
