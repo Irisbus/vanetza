@@ -73,7 +73,7 @@ TEST(SecuredMessageV3, verify)
     EXPECT_EQ(3, msg.protocol_version());
 
     StoredPositionProvider position_provider;
-    ManualRuntime runtime { Clock::at("2019-11-21 11:30") };
+    ManualRuntime runtime { Clock::at("2019-11-21 13:28") };
     auto backend = create_backend("default");
 
     StraightVerifyService verify_service { runtime, *backend, position_provider };
