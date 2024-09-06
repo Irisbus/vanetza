@@ -404,6 +404,9 @@ TEST_F(RouterIndicate, shb_secured_v3_message_digest)
     router.set_transport_handler(geonet::UpperProtocol::BTP_B, &ind_ifc);
     router.set_transport_handler(geonet::UpperProtocol::IPv6, nullptr);
 
+    // set time so that message is not expired
+    runtime.trigger(Clock::at("2019-11-21 13:28"));
+
     // message with digest will not be accepted because its certificate is unknown
     EXPECT_EQ(security.certificate_cache_v3().size(), 0);
     router.indicate(get_up_packet(gn_buffer), mac_address_sender, mac_address_destination);
@@ -499,6 +502,9 @@ TEST_F(RouterIndicate, shb_secured_v3_message_certificate)
     // gn_buffer contains a CAM using BTP-B transport
     router.set_transport_handler(geonet::UpperProtocol::BTP_B, &ind_ifc);
     router.set_transport_handler(geonet::UpperProtocol::IPv6, nullptr);
+
+    // set time so that message is not expired
+    runtime.trigger(Clock::at("2019-11-21 13:28:02"));
 
     router.indicate(get_up_packet(gn_buffer), mac_address_sender, mac_address_destination);
 
