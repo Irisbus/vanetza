@@ -18,7 +18,7 @@ bool check_generation_time(const SecuredMessage& message, Clock::time_point now)
     if (generation_time) {
         static const Clock::duration generation_time_future_default = milliseconds(200);
         // Extra time to account for request/response round trip
-        static const Clock::duration generation_time_future_certs = seconds(1);
+        static const Clock::duration generation_time_future_certs = seconds(3);
 
         static const Clock::duration generation_time_past_default = minutes(10);
         static const Clock::duration generation_time_past_ca = seconds(2);
