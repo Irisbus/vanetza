@@ -6,6 +6,7 @@
 #include <vanetza/security/hashed_id.hpp>
 #include <vanetza/security/public_key.hpp>
 #include <vanetza/security/signature.hpp>
+#include <vanetza/security/v2/region.hpp>
 #include <vanetza/security/v3/asn1_types.hpp>
 #include <vanetza/security/v3/validity_restriction.hpp>
 #include <boost/optional/optional_fwd.hpp>
@@ -44,6 +45,8 @@ struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificat
     boost::optional<KeyType> get_verification_key_type() const;
 
     StartAndEndValidity get_start_and_end_validity() const;
+
+    v2::GeographicRegion get_region() const;
 };
 
 /**
@@ -81,6 +84,11 @@ boost::optional<PublicKey> get_public_encryption_key(const asn1::EtsiTs103097Cer
  */
 boost::optional<Signature> get_signature(const asn1::EtsiTs103097Certificate& cert);
 
+/**
+ * Get list of ITS AID permissions from certificate
+ * \param cert certificate
+ * \return list of ITS AIDs
+ */
 std::list<ItsAid> get_aids(const asn1::EtsiTs103097Certificate& cert);
 
 /**

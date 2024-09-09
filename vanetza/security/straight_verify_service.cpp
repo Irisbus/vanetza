@@ -518,6 +518,13 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         return confirm;
     }
 
+    // Check certificate region validity
+    if (!v3::check_certificate_region(cert, m_position_provider.position_fix())) {
+        confirm.report = VerificationReport::Invalid_Certificate;
+        confirm.certificate_validity = CertificateInvalidReason::Off_Region;
+        return confirm;
+    }
+
     ByteBuffer data_hash = m_backend.calculate_hash(public_key->type, msg.signing_payload());
     ByteBuffer cert_hash = m_backend.calculate_hash(public_key->type, encoded_cert);
     ByteBuffer concat_hash = data_hash;

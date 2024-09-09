@@ -67,6 +67,22 @@ bool check_certificate_time(const Certificate& certificate, Clock::time_point no
     return true;
 }
 
+bool check_certificate_region(const Certificate& certificate, const PositionFix& position)
+{
+    auto region = certificate.get_region();
+
+    if (get_type(region) == v2::RegionType::None) {
+        return true;
+    }
+
+    if (!position.confidence) {
+        // return false; // cannot check region restrictions without good position fix
+        return true; // do not invalidate based on bad position fix for now
+    }
+
+    return v2::is_within(v2::TwoDLocation(position.latitude, position.longitude), region);
+}
+
 } // namespace v3
 } // namespace security
 } // namespace vanetza

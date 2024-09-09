@@ -14,6 +14,8 @@ namespace v3
 bool check_generation_time(const SecuredMessage& message, Clock::time_point now);
 bool check_certificate_time(const Certificate& certificate, Clock::time_point now);
 
+bool check_certificate_region(const Certificate& certificate, const PositionFix& position);
+
 } // namespace v3
 } // namespace security
 } // namespace vanetza

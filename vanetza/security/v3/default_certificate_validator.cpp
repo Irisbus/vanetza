@@ -53,8 +53,11 @@ bool check_subject_assurance_consistency(const Certificate& certificate, const C
 
 bool check_region_consistency(const Certificate& certificate, const Certificate& signer)
 {
-    // TODO
-    return true;
+    printf("Checking region consistency\n");
+    auto certificate_region = certificate.get_region();
+    auto signer_region = signer.get_region();
+
+    return is_within(certificate_region, signer_region);
 }
 
 bool check_consistency(const Certificate& certificate, const Certificate& signer)
