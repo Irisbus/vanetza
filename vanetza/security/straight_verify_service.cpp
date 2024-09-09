@@ -433,12 +433,6 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         }
     }
 
-    auto gen_time = msg.generation_time();
-    if (!gen_time) {
-        // TS 103 097 v1.3.1 demands generation time to be always present
-        confirm.report = VerificationReport::Invalid_Timestamp;
-        return confirm;
-    }
     if (!v3::check_generation_time(msg, m_runtime.now())) {
         confirm.report = VerificationReport::Invalid_Timestamp;
         return confirm;
@@ -535,9 +529,7 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         return confirm;
     }
 
-    if (cert_cache && !cert.issuer_is_self()) {
-        printf("Adding cert to cache\n");
-        // cert.print();
+    if (cert_cache) {
         cert_cache->store(cert);
     }
 

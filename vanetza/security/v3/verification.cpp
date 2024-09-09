@@ -13,7 +13,7 @@ bool check_generation_time(const SecuredMessage& message, Clock::time_point now)
     using Time64 = std::uint64_t;
     using namespace std::chrono;
 
-    bool valid = false;
+    bool valid = false; // TS 103 097 v1.3.1 demands generation time to be always present
     boost::optional<Time64> generation_time = message.generation_time();
     if (generation_time) {
         static const Clock::duration generation_time_future_default = milliseconds(200);
