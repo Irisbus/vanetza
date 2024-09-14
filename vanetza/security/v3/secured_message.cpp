@@ -218,24 +218,29 @@ std::list<HashedId3> SecuredMessage::get_inline_p2pcd_request() const
 void SecuredMessage::set_inline_p2pcd_request(std::list<HashedId3> requests)
 {
     if (m_struct->content->present == Vanetza_Security_Ieee1609Dot2Content_PR_signedData) {
-        ASN_STRUCT_FREE_CONTENTS_ONLY(
-            asn_DEF_Vanetza_Security_SequenceOfHashedId3,
-            &(m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest)
-        );
+        assert(m_struct->content->choice.signedData);
+        assert(m_struct->content->choice.signedData->tbsData);
+
+        if (m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest) {
+            ASN_STRUCT_RESET(asn_DEF_Vanetza_Security_SequenceOfHashedId3,
+                &m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest);
+        }
+
         for (HashedId3 request : requests) {
             this->add_inline_p2pcd_request(request);
         }
     }
-
 }
 
-void SecuredMessage::add_inline_p2pcd_request(HashedId3 unkown_certificate_digest)
+void SecuredMessage::add_inline_p2pcd_request(HashedId3 unknown_certificate_digest)
 {
     if (m_struct->content->present == Vanetza_Security_Ieee1609Dot2Content_PR_signedData) {
-            if (m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest == nullptr) {
+        if (m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest == nullptr) {
             m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest = asn1::allocate<asn1::SequenceOfHashedId3>();
         }
-        ASN_SEQUENCE_ADD(&(m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest), &unkown_certificate_digest);
+        Vanetza_Security_HashedId3_t* asn_digest = OCTET_STRING_new_fromBuf(&asn_DEF_Vanetza_Security_HashedId3, 
+                reinterpret_cast<char*>(unknown_certificate_digest.data()), unknown_certificate_digest.size());
+        ASN_SEQUENCE_ADD(m_struct->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest, asn_digest);
     }
 }
 
@@ -681,6 +686,22 @@ boost::optional<HashedId8> get_certificate_id(const SecuredMessage::SignerIdenti
         }
     };
     return boost::apply_visitor(cert_id_visitor(), identifier);
+}
+
+bool contains_certificate(const SecuredMessage::SignerIdentifier& identifier)
+{
+    struct visitor : public boost::static_visitor<bool> {
+        bool operator()(const asn1::HashedId8* digest) const
+        {
+            return false;
+        }
+
+        bool operator()(const asn1::Certificate* cert) const
+        {
+            return true;
+        }
+    };
+    return boost::apply_visitor(visitor(), identifier);
 }
 
 } // namespace v3

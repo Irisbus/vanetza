@@ -22,6 +22,7 @@ namespace v3
 struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificate>
 {
     Certificate();
+    explicit Certificate(const asn1::EtsiTs103097Certificate&);
 
     void add_permission(ItsAid aid, const ByteBuffer& ssp);
 
@@ -55,6 +56,13 @@ struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificat
  * \return digest if possible
  */
 boost::optional<HashedId8> calculate_digest(const asn1::EtsiTs103097Certificate& cert);
+
+/**
+ * Check if certificate is in canonical format suitable for digest calculation.
+ * \param cert certificate
+ * \return true if certificate is in canonical format
+ */
+bool is_canonical(const asn1::EtsiTs103097Certificate& cert);
 
 /**
  * Extract the public key out of a certificate

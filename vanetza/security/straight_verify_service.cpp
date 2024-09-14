@@ -469,19 +469,23 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         v3::CertificateCache* m_cache;
     } certificate_lookup_visitor(cert_cache);
     auto signer_identifier = msg.signer_identifier();
-    const v3::asn1::Certificate* certificate = boost::apply_visitor(certificate_lookup_visitor, signer_identifier);
-    if (!certificate) {
-        confirm.report = VerificationReport::Signer_Certificate_Not_Found;
-        if (sign_policy) {
-            auto cert_hash = v3::get_certificate_id(signer_identifier);
-            if (cert_hash) {
-                confirm.certificate_id = *cert_hash;
-                sign_policy->request_unrecognized_certificate(*cert_hash);
-            }
-            // If message is signed by unknown AT, include certificate in next CAM
-            // See TS 103 097 v2.1.1, section 7.1.1, 1st bullet, 3rd dash
+
+    // track "known" stations
+    auto maybe_digest = v3::get_certificate_id(signer_identifier);
+    if (cert_cache && maybe_digest) {
+        bool was_unknown_station = cert_cache->announce(*maybe_digest);
+        if (was_unknown_station && msg.its_aid() == aid::CA && sign_policy) {
+            // CAM from unknown station received, add our certificate to next outgoing message
             sign_policy->request_certificate();
         }
+    }
+
+    const v3::asn1::Certificate* certificate = boost::apply_visitor(certificate_lookup_visitor, signer_identifier);
+    if (!certificate && maybe_digest) {
+        if (sign_policy) {
+            sign_policy->request_unrecognized_certificate(*maybe_digest);
+        }
+        confirm.report = VerificationReport::Signer_Certificate_Not_Found;
         return confirm;
     }
 
@@ -541,9 +545,23 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
     }
 
     confirm.its_aid = msg.its_aid();
-    confirm.permissions = v3::get_app_permissions(*cert, confirm.its_aid);
-    confirm.certificate_id = v3::get_certificate_id(signer_identifier);
+    confirm.permissions = v3::get_app_permissions(*certificate, confirm.its_aid);
+    confirm.certificate_id = maybe_digest;
     confirm.report = VerificationReport::Success;
+
+    if (cert_cache && confirm.certificate_id) {
+        bool already_cached = cert_cache->lookup(*confirm.certificate_id) != nullptr;
+        if (!already_cached && confirm.its_aid == aid::CA && sign_policy) {
+            // CAM from unknown station received, add our certificate to next outgoing message
+            sign_policy->request_certificate();
+        }
+
+        // update certificate cache with received certificate
+        if (certificate && v3::contains_certificate(signer_identifier)) {
+            cert_cache->store(v3::Certificate { *certificate });
+        }
+    }
+
     return confirm;
 }
 
