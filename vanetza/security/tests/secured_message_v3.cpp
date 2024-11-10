@@ -94,8 +94,9 @@ TEST(SecuredMessageV3, sign_and_verify)
     auto backend = create_backend("default");
 
     v3::NaiveCertificateProvider cert_provider { runtime };
-    v3::DefaultSignHeaderPolicy sign_header_policy { runtime, position_provider};
-    v3::StraightSignService sign_service { cert_provider, *backend, sign_header_policy };
+    v3::DefaultSignHeaderPolicy sign_header_policy { runtime, position_provider, cert_provider };
+    v3::NullCertificateValidator cert_validator;
+    v3::StraightSignService sign_service { cert_provider, *backend, sign_header_policy, cert_validator };
 
     SignRequest request;
     ChunkPacket packet;
@@ -103,9 +104,10 @@ TEST(SecuredMessageV3, sign_and_verify)
     request.plain_message = std::move(packet);
     request.its_aid = aid::DEN;
     SignConfirm sign_confirm = sign_service.sign(std::move(request));
+    ASSERT_TRUE(sign_confirm.secured_message);
 
     StraightVerifyService verify_service { runtime, *backend, position_provider };
-    VerifyRequest verify_request { SecuredMessageView { sign_confirm.secured_message } };
+    VerifyRequest verify_request { SecuredMessageView { *sign_confirm.secured_message } };
     VerifyConfirm verify_confirm = verify_service.verify(verify_request);
     EXPECT_EQ(verify_confirm.report, VerificationReport::Success);
     EXPECT_TRUE(verify_confirm.certificate_validity.valid());

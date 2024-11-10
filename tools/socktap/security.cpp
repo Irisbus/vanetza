@@ -10,6 +10,7 @@
 #include <vanetza/security/v2/static_certificate_provider.hpp>
 #include <vanetza/security/v2/trust_store.hpp>
 #include <vanetza/security/v3/certificate_cache.hpp>
+#include <vanetza/security/v3/certificate_validator.hpp>
 #include <vanetza/security/v3/naive_certificate_provider.hpp>
 #include <vanetza/security/v3/persistence.hpp>
 #include <vanetza/security/v3/sign_header_policy.hpp>
@@ -60,7 +61,7 @@ public:
             security::StraightVerifyService(runtime, *backend, positioning) };
         verify_service->use_certificate_provider(cert_provider.get());
         verify_service->use_certificate_cache(&cert_cache);
-        verify_service->use_certitifcate_validator(&cert_validator);
+        verify_service->use_certificate_validator(&cert_validator);
         verify_service->use_sign_header_policy(&sign_header_policy);
         entity.reset(new security::DelegatingSecurityEntity { std::move(sign_service), std::move(verify_service) });
     }
@@ -81,10 +82,10 @@ class SecurityContextV3 : public security::SecurityEntity
 public:
     SecurityContextV3(const Runtime& runtime, PositionProvider& positioning) :
         runtime(runtime), positioning(positioning),
-        backend(security::create_backend("default")),
-        sign_header_policy(runtime, positioning),
-        cert_cache()
+        backend(security::create_backend("default"))
     {
+        cert_validator.use_runtime(&runtime);
+        cert_validator.use_position_provider(&positioning);
     }
 
     security::EncapConfirm encapsulate_packet(security::EncapRequest&& request) override
@@ -108,11 +109,14 @@ public:
         if (!cert_provider) {
             throw std::runtime_error("certificate provider is missing");
         }
+        sign_header_policy.reset(new security::v3::DefaultSignHeaderPolicy(runtime, positioning, *cert_provider));
         std::unique_ptr<security::SignService> sign_service { new 
-            security::v3::StraightSignService(*cert_provider, *backend, sign_header_policy) };
+            security::v3::StraightSignService(*cert_provider, *backend, *sign_header_policy, cert_validator) };
         std::unique_ptr<security::StraightVerifyService> verify_service { new
             security::StraightVerifyService(runtime, *backend, positioning) };
-        verify_service->use_certificate_cache(&cert_cache);
+        verify_service->use_certificate_provider(cert_provider.get());
+        verify_service->use_certificate_validator(&cert_validator);
+        verify_service->use_sign_header_policy(sign_header_policy.get());
         entity.reset(new security::DelegatingSecurityEntity { std::move(sign_service), std::move(verify_service) });
     }
 
@@ -121,8 +125,8 @@ public:
     std::unique_ptr<security::Backend> backend;
     std::unique_ptr<security::SecurityEntity> entity;
     std::unique_ptr<security::v3::CertificateProvider> cert_provider;
-    security::v3::DefaultSignHeaderPolicy sign_header_policy;
-    security::v3::CertificateCache cert_cache;
+    std::unique_ptr<security::v3::DefaultSignHeaderPolicy> sign_header_policy;
+    security::v3::DefaultCertificateValidator cert_validator;
 };
 
 std::unique_ptr<security::SecurityEntity>
@@ -160,19 +164,22 @@ load_v2_certificates(const std::string& cert_path, const std::string& cert_key_p
 }
 
 std::unique_ptr<security::v3::CertificateProvider>
-load_v3_certificates(const std::string& cert_path, const std::string& cert_key_path, const std::vector<std::string> cert_chain_path, security::v3::CertificateCache& cert_cache)
+load_v3_certificates(const std::string& cert_path, const std::string& cert_key_path, const std::vector<std::string> cert_chain_path)
 {
     auto authorization_ticket = security::v3::load_certificate_from_file(cert_path);
     auto authorization_ticket_key = security::v3::load_private_key_from_file(cert_key_path);
 
-    std::list<security::v3::Certificate> chain;
+    security::PrivateKey priv_key;
+    priv_key.type = authorization_ticket.get_verification_key_type();
+    std::copy(authorization_ticket_key.private_key.key.begin(), authorization_ticket_key.private_key.key.end(),
+        std::back_inserter(priv_key.key));
+
+    auto provider = std::make_unique<security::v3::StaticCertificateProvider>(authorization_ticket, priv_key);
     for (auto& chain_path : cert_chain_path) {
         auto chain_certificate = security::v3::load_certificate_from_file(chain_path);
-        chain.push_back(chain_certificate);
-        cert_cache.store(chain_certificate);
+        provider->cache().store(chain_certificate);
     }
-
-    return std::make_unique<security::v3::StaticCertificateProvider>(authorization_ticket, authorization_ticket_key.private_key, chain);
+    return provider;
 }
 
 std::unique_ptr<security::SecurityEntity>
@@ -186,7 +193,7 @@ create_security_entity(const po::variables_map& vm, const Runtime& runtime, Posi
     } else if (name == "dummy" || name == "dummy-v3") {
         security = create_dummy_v3_security_entity(runtime);
     } else if (name == "dummy-v2") {
-        security == create_dummy_v2_security_entity(runtime);
+        security = create_dummy_v2_security_entity(runtime);
     } else if (name == "certs" || name == "certs-v3" || name == "certs-v2") {
         const unsigned version = name == "certs-v2" ? 2 : 3;
 
@@ -204,7 +211,7 @@ create_security_entity(const po::variables_map& vm, const Runtime& runtime, Posi
 
             if (version == 3) {
                 auto context = std::make_unique<SecurityContextV3>(runtime, positioning);
-                context->cert_provider = load_v3_certificates(cert_path, cert_key_path, chain_paths, context->cert_cache);
+                context->cert_provider = load_v3_certificates(cert_path, cert_key_path, chain_paths);
                 context->build_entity();
                 security = std::move(context);
             } else {

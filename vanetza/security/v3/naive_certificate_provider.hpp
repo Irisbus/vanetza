@@ -21,7 +21,7 @@ namespace v3
  *
  * It's intended for experimenting with secured messages without validating signatures.
  */
-class NaiveCertificateProvider : public CertificateProvider
+class NaiveCertificateProvider : public BaseCertificateProvider
 {
 public:
     NaiveCertificateProvider(const Runtime&);
@@ -33,16 +33,10 @@ public:
     const Certificate& own_certificate() override;
 
     /**
-     * Get own certificate chain, excluding the leaf certificate and root CA
-     * \return own certificate chain
-     */
-    std::list<Certificate> own_chain() override;
-
-    /**
      * \brief get own private key
      * \return private key
      */
-    const ecdsa256::PrivateKey& own_private_key() override;
+    const PrivateKey& own_private_key() override;
 
     /**
      * \brief get ticket signer certificate (same for all instances)

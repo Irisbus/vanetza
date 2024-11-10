@@ -1,9 +1,12 @@
 #pragma once
 #include <vanetza/asn1/asn1c_wrapper.hpp>
 #include <vanetza/asn1/security/EtsiTs103097Certificate.h>
+#include <vanetza/common/clock.hpp>
 #include <vanetza/common/its_aid.hpp>
+#include <vanetza/common/position_fix.hpp>
 #include <vanetza/net/packet_variant.hpp>
 #include <vanetza/security/hashed_id.hpp>
+#include <vanetza/security/key_type.hpp>
 #include <vanetza/security/public_key.hpp>
 #include <vanetza/security/signature.hpp>
 #include <vanetza/security/v2/region.hpp>
@@ -19,19 +22,19 @@ namespace security
 namespace v3
 {
 
-struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificate>
+// forward declaration
+class Certificate;
+
+/**
+ * Read-only view on a certificate
+ * 
+ * In contrast to Certificate, a view does not own the certificate data.
+ * A view can be created with low overhead as no heavy copying is required.
+ */
+class CertificateView
 {
-    Certificate();
-    explicit Certificate(const asn1::EtsiTs103097Certificate&);
-
-    void add_permission(ItsAid aid, const ByteBuffer& ssp);
-
-    void add_cert_permission(asn1::PsidGroupPermissions* group_permission);
-
-    void set_signature(const SomeEcdsaSignature& signature);
-
-    HashedId8 get_issuer_identifier() const;
-    bool issuer_is_self() const;
+public:
+    explicit CertificateView(const asn1::EtsiTs103097Certificate* cert);
 
     /**
      * Calculate digest of certificate
@@ -39,15 +42,103 @@ struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificat
      */
     boost::optional<HashedId8> calculate_digest() const;
 
+    StartAndEndValidity get_start_and_end_validity() const; // TODO
+
+    v2::GeographicRegion get_region() const; // TODO
+
+    KeyType get_verification_key_type() const;
+
     /**
-     * Get verification key type
-     * \return verification key type if possible
+     * Get issuer digest (if any)
+     * \return issuer digest
      */
-    boost::optional<KeyType> get_verification_key_type() const;
+    boost::optional<HashedId8> issuer_digest() const;
 
-    StartAndEndValidity get_start_and_end_validity() const;
+    /**
+     * Check if certificate is a Certification Authority certificate
+     * \return true if certificate is a CA certificate
+     */
+    bool is_ca_certificate() const;
 
-    v2::GeographicRegion get_region() const;
+    /**
+     * Check if certificate is an Authorization Ticket certificate
+     * \return true if certificate is an AT certificate
+     */
+    bool is_at_certificate() const;
+
+    /**
+     * Check if certificate has an region restriction
+     * \return true if certificate is only valid within a specific region
+     */
+    bool has_region_restriction() const;
+
+    /**
+     * Check if certificate is valid at given location
+     * 
+     * \param location location to be checked
+     * \return true if certificate is valid at location
+     */
+    bool valid_at_location(const PositionFix& location) const;
+
+    /**
+     * Check if certificate is valid at given time point
+     * 
+     * \param time_point time point to be checked
+     * \return true if certificate is valid at time point
+     */
+    bool valid_at_timepoint(const Clock::time_point& time_point) const;
+
+    /**
+     * Check if certificate is valid for given application
+     * 
+     * \param aid application to be checked
+     * \return true if certificate is valid for application
+     */
+    bool valid_for_application(ItsAid aid) const;
+
+    /**
+     * Check if certificate has a canonical format
+     * \return true if certificate is in canonical format
+     */
+    bool is_canonical() const;
+
+    /**
+     * Convert certificate into its canonical format if possible.
+     * \return canonical certificate (or none if conversion failed)
+     */
+    boost::optional<Certificate> canonicalize() const;
+
+    /**
+     * Encode certificate.
+     * \return encoded certificate
+     */
+    ByteBuffer encode() const;
+
+protected:
+    const asn1::EtsiTs103097Certificate* m_cert = nullptr;
+};
+
+struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificate>, public CertificateView
+{
+    using Wrapper = asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificate>;
+
+    Certificate();
+    explicit Certificate(const asn1::EtsiTs103097Certificate&);
+
+    Certificate(const Certificate&);
+    Certificate& operator=(const Certificate&);
+
+    Certificate(Certificate&&);
+    Certificate& operator=(Certificate&&);
+
+    // resolve ambiguity
+    ByteBuffer encode() const;
+
+    void add_permission(ItsAid aid, const ByteBuffer& ssp);
+
+    void add_cert_permission(asn1::PsidGroupPermissions* group_permission);
+
+    void set_signature(const SomeEcdsaSignature& signature);
 };
 
 /**
@@ -65,6 +156,40 @@ boost::optional<HashedId8> calculate_digest(const asn1::EtsiTs103097Certificate&
 bool is_canonical(const asn1::EtsiTs103097Certificate& cert);
 
 /**
+ * Convert certificate into its canonical format if possible.
+ * \param cert certificate
+ * \return canonical certificate (or none if conversion failed)
+ */
+boost::optional<Certificate> canonicalize(const asn1::EtsiTs103097Certificate& cert); 
+
+/**
+ * Check if certificate is valid at given location
+ * 
+ * \param cert certificate to be checked
+ * \param location location to be checked
+ * \return true if certificate is valid at location
+ */
+bool valid_at_location(const asn1::EtsiTs103097Certificate& cert, const PositionFix& location);
+
+/**
+ * Check if certificate is valid at given time point
+ * 
+ * \param cert certificate to be checked
+ * \param time_point time point to be checked
+ * \return true if certificate is valid at time point
+ */
+bool valid_at_timepoint(const asn1::EtsiTs103097Certificate& cert, const Clock::time_point& time_point);
+
+/**
+ * Check if certificate is valid for given application
+ *
+ * \param cert certificate to be checked
+ * \param aid application to be checked
+ * \return true if certificate is valid for application
+ */
+bool valid_for_application(const asn1::EtsiTs103097Certificate& cert, ItsAid aid);
+
+/**
  * Extract the public key out of a certificate
  * \param cert certificate
  * \return public key if possible
@@ -74,9 +199,9 @@ boost::optional<PublicKey> get_public_key(const asn1::EtsiTs103097Certificate& c
 /**
  * Get verification key type
  * \param cert certificate
- * \return verification key type
+ * \return verification key type (maybe unspecified)
  */
-boost::optional<KeyType> get_verification_key_type(const asn1::EtsiTs103097Certificate& cert);
+KeyType get_verification_key_type(const asn1::EtsiTs103097Certificate& cert);
 
 /**
  * Extract the public key for encrypting out of a certificate

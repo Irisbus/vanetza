@@ -4,7 +4,7 @@
 #include <vanetza/security/v3/certificate.hpp>
 #include <vanetza/security/v3/certificate_provider.hpp>
 #include <vanetza/security/v3/sign_header_policy.hpp>
-#include <list>
+#include <cmath>
 
 namespace vanetza
 {
@@ -13,62 +13,95 @@ namespace security
 namespace v3
 {
 
-DefaultSignHeaderPolicy::DefaultSignHeaderPolicy(const Runtime& rt, PositionProvider& positioning) :
-    m_runtime(rt), m_positioning(positioning), m_cam_next_certificate(m_runtime.now()), m_cert_requested(false), m_chain_requested(false)
+asn1::ThreeDLocation build_location(const PositionFix& fix)
+{
+    asn1::ThreeDLocation location;
+    
+    long lat = std::round(fix.latitude / units::degree / 90.0 * Vanetza_Security_NinetyDegreeInt_max);
+    if (lat >= Vanetza_Security_NinetyDegreeInt_min && lat <= Vanetza_Security_NinetyDegreeInt_max) {
+        location.latitude = lat;
+    } else {
+        location.latitude = Vanetza_Security_NinetyDegreeInt_unknown;
+    }
+
+    long lon = std::round(fix.longitude / units::degree / 180.0 * Vanetza_Security_OneEightyDegreeInt_max);
+    if (lon >= Vanetza_Security_OneEightyDegreeInt_min && lon <= Vanetza_Security_OneEightyDegreeInt_max) {
+        location.longitude = lon;
+    } else {
+        location.longitude = Vanetza_Security_OneEightyDegreeInt_unknown;
+    }
+
+    location.elevation = 4096; // no "not available" value specified, set 0m as fallback
+    if (fix.altitude) {
+        long elev_dm = std::round(fix.altitude->value() / units::si::meter * 10.0);
+        if (elev_dm >= -4095 && elev_dm <= 61439) {
+            location.elevation = elev_dm + 4096;
+        }
+    }
+
+    return location;
+}
+
+DefaultSignHeaderPolicy::DefaultSignHeaderPolicy(const Runtime& rt, PositionProvider& positioning, CertificateProvider& certs) :
+    m_runtime(rt), m_positioning(positioning), m_cert_provider(certs),
+    m_cam_next_certificate(m_runtime.now()),
+    m_cert_requested(false)
 {
 }
 
-void DefaultSignHeaderPolicy::prepare_header(const SignRequest& request, CertificateProvider& certificate_provider, SecuredMessage& secured_message)
+void DefaultSignHeaderPolicy::prepare_header(const SignRequest& request, SecuredMessage& secured_message)
 {
     const auto now = m_runtime.now();
     secured_message.set_its_aid(request.its_aid);
     secured_message.set_generation_time(vanetza::security::v2::convert_time64(now));
-    //header_info.signer_info = certificate_provider.own_certificate();
 
     if (request.its_aid == aid::CA) {
+        bool signer_full_cert = false;
+        const auto& at_cert = m_cert_provider.own_certificate();
+        const auto maybe_at_digest = at_cert.calculate_digest();
+
+        // include full certificate if its digest has been requested by a peer
+        if (maybe_at_digest && m_incoming_requests.is_pending(truncate(*maybe_at_digest))) {
+            m_cert_requested = true;
+            m_incoming_requests.discard_request(truncate(*maybe_at_digest));
+        }
+
         // section 7.1.1 in TS 103 097 v2.1.1
         if (now < m_cam_next_certificate && !m_cert_requested) {
-            auto maybe_digest = calculate_digest(*certificate_provider.own_certificate());
-            if (maybe_digest) {
-                secured_message.set_signer_identifier(*maybe_digest);
+            if (maybe_at_digest) {
+                secured_message.set_signer_identifier(*maybe_at_digest);
             }
         } else {
-            secured_message.set_signer_identifier(certificate_provider.own_certificate());
+            signer_full_cert = true;
+            m_cert_requested = false;
+            secured_message.set_signer_identifier(at_cert);
             m_cam_next_certificate = now + std::chrono::seconds(1) - std::chrono::milliseconds(50);
         }
 
-        if (m_unknown_certificates.size() > 0) {
-            std::list<HashedId3> unknown_certificates(m_unknown_certificates.begin(), m_unknown_certificates.end());
-            secured_message.set_inline_p2pcd_request(unknown_certificates);
-            m_unknown_certificates.clear();
+        // peer-to-peer certificate distribution
+        secured_message.set_inline_p2pcd_request(m_outgoing_requests.all());
+        if (!signer_full_cert) {
+            while (auto p2p_hid = m_incoming_requests.next_one()) {
+                // provide requested CA certificates (no AT certificates here)
+                auto p2p_cert = m_cert_provider.cache().lookup(*p2p_hid);
+                if (p2p_cert && p2p_cert->is_ca_certificate()) {
+                    secured_message.set_requested_certificate(*p2p_cert);
+                    break;
+                }
+            }
         }
-        m_cert_requested = false;
-        m_chain_requested = false;
-    }
-    else if (request.its_aid == aid::DEN) {
+    } else if (request.its_aid == aid::DEN) {
         // section 7.1.2 in TS 103 097 v2.1.1
-        secured_message.set_signer_identifier(certificate_provider.own_certificate());
-        asn1::ThreeDLocation location;
-        v2::ThreeDLocation location_v2;
-        auto position = m_positioning.position_fix();
-        if (position.altitude) {
-            location_v2 = v2::ThreeDLocation(position.latitude, position.longitude, v2::to_elevation(position.altitude->value()));
-        } else {
-            location_v2 = v2::ThreeDLocation(position.latitude, position.longitude);
-        }
-        location.latitude = location_v2.latitude.value();
-        location.longitude = location_v2.longitude.value();
-        location.elevation = 0;
-        secured_message.set_generation_location(location);
-    }
-    else {
-        secured_message.set_signer_identifier(certificate_provider.own_certificate());
+        secured_message.set_signer_identifier(m_cert_provider.own_certificate());
+        secured_message.set_generation_location(build_location(m_positioning.position_fix()));
+    } else {
+        secured_message.set_signer_identifier(m_cert_provider.own_certificate());
     }
 }
 
 void DefaultSignHeaderPolicy::request_unrecognized_certificate(HashedId8 id)
 {
-    m_unknown_certificates.insert(truncate(id));
+    m_outgoing_requests.add_request(truncate(id));
 }
 
 void DefaultSignHeaderPolicy::request_certificate()
@@ -76,9 +109,14 @@ void DefaultSignHeaderPolicy::request_certificate()
     m_cert_requested = true;
 }
 
-void DefaultSignHeaderPolicy::request_certificate_chain()
+void DefaultSignHeaderPolicy::enqueue_p2p_request(HashedId3 id)
 {
-    m_chain_requested = true;
+    m_incoming_requests.add_request(id);
+}
+
+void DefaultSignHeaderPolicy::discard_p2p_request(HashedId3 id)
+{
+    m_incoming_requests.discard_request(id);
 }
 
 } // namespace v3

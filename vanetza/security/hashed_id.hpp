@@ -20,6 +20,7 @@ HashedId3 truncate(const HashedId8&);
 HashedId8 create_hashed_id8(const Sha256Digest&);
 HashedId8 create_hashed_id8(const Sha384Digest&);
 
+std::string to_string(const vanetza::security::HashedId3&);
 std::string to_string(const vanetza::security::HashedId8&);
 
 } // namespace security
@@ -27,6 +28,12 @@ std::string to_string(const vanetza::security::HashedId8&);
 
 namespace std
 {
+// std::hash specialization for HashedId3
+template<> struct hash<vanetza::security::HashedId3>
+{
+    size_t operator()(const vanetza::security::HashedId3&) const;
+};
+
 /// std::hash specialization for HashedId8
 template<> struct hash<vanetza::security::HashedId8>
 {

@@ -64,6 +64,7 @@ ByteBuffer encode_public_key(const PublicKey& pub_key)
 }
 
 using InternalPublicKey = CryptoPP::DL_PublicKey_EC<CryptoPP::ECP>;
+using InternalPrivateKey = CryptoPP::DL_PrivateKey_EC<CryptoPP::ECP>;
 
 /**
  * Convert our PublicKey type to a Crypto++ EC public key
@@ -83,6 +84,19 @@ boost::optional<InternalPublicKey> convert_public_key(const PublicKey& pub_key)
         return boost::none;
     }
     out.SetPublicElement(point);
+    return out;
+}
+
+/**
+ * Convert our PrivateKey type to a Crypto++ EC private key
+ * \param priv_key our private key
+ * \return private key as Crypto++ type
+ */
+InternalPrivateKey convert_private_key(const PrivateKey& priv_key)
+{
+    InternalPrivateKey out;
+    out.AccessGroupParameters().Initialize(get_oid(priv_key.type));
+    out.SetPrivateExponent(CryptoPP::Integer(priv_key.key.data(), priv_key.key.size()));
     return out;
 }
 
@@ -125,19 +139,53 @@ public:
     }
 };
 
+template<size_t N>
+class IdentityHash : public CryptoPP::HashTransformation
+{
+public:
+    CRYPTOPP_CONSTANT(DIGESTSIZE = N);
+
+    static const char* StaticAlgorithmName()
+    {
+        return "IdentityHash";
+    }
+
+    void Update(const uint8_t* input, size_t length) override
+    {
+        std::copy_n(input, std::min(length, m_hash.size()), m_hash.begin());;
+    }
+
+    void TruncatedFinal(uint8_t* output, size_t len) override
+    {
+        if (output != nullptr) {
+            std::copy_n(m_hash.begin(), std::min(len, m_hash.size()), output);
+        }
+        m_hash.fill(0);
+    }
+
+    unsigned int DigestSize() const override
+    {
+        return m_hash.size();
+    }
+
+private:
+    std::array<uint8_t, N> m_hash;
+};
+
+template<size_t N>
+using DigestEcdsa = CryptoPP::ECDSA<CryptoPP::ECP, IdentityHash<N>>;
+
 } // namespace
 
 using std::placeholders::_1;
 
-BackendCryptoPP::BackendCryptoPP() :
-    m_private_cache(std::bind(&BackendCryptoPP::internal_private_key, this, _1), 8),
-    m_public_cache(std::bind(&BackendCryptoPP::internal_public_key, this, _1), 2048)
+BackendCryptoPP::BackendCryptoPP()
 {
 }
 
 EcdsaSignature BackendCryptoPP::sign_data(const ecdsa256::PrivateKey& generic_key, const ByteBuffer& data)
 {
-    return sign_data(m_private_cache[generic_key], data);
+    return sign_data(internal_private_key(generic_key), data);
 }
 
 EcdsaSignature BackendCryptoPP::sign_data(const Ecdsa256::PrivateKey& private_key, const ByteBuffer& data)
@@ -163,10 +211,58 @@ EcdsaSignature BackendCryptoPP::sign_data(const Ecdsa256::PrivateKey& private_ke
     return ecdsa_signature;
 }
 
+Signature BackendCryptoPP::sign_digest(const PrivateKey& private_key, const ByteBuffer& digest)
+{
+    static const Signature dummy = {};
+
+    CryptoPP::DL_Keys_ECDSA<CryptoPP::ECP>::PrivateKey key;
+    CryptoPP::Integer integer { private_key.key.data(), private_key.key.size() };
+
+    if (private_key.type == KeyType::NistP256) {
+        CryptoPP::Integer integer { private_key.key.data(), private_key.key.size() };
+        key.Initialize(CryptoPP::ASN1::secp256r1(), integer);
+    } else if (private_key.type == KeyType::BrainpoolP256r1) {
+        CryptoPP::Integer integer { private_key.key.data(), private_key.key.size() };
+        key.Initialize(CryptoPP::ASN1::brainpoolP256r1(), integer);
+    } else if (private_key.type == KeyType::BrainpoolP384r1) {
+        CryptoPP::Integer integer { private_key.key.data(), private_key.key.size() };
+        key.Initialize(CryptoPP::ASN1::brainpoolP384r1(), integer);
+    } else {
+        return dummy;
+    }
+
+    auto calculate_signature = [&](CryptoPP::PK_Signer* signer) -> Signature
+    {
+        // calculate signature
+        ByteBuffer signature(signer->MaxSignatureLength(), 0x00);
+        auto signature_length = signer->SignMessage(m_prng, digest.data(), digest.size(), signature.data());
+        signature.resize(signature_length);
+
+        auto signature_delimiter = signature.begin();
+        std::advance(signature_delimiter, signer->MaxSignatureLength() / 2);
+
+        Signature ecdsa_signature;
+        ecdsa_signature.type = private_key.type;
+        ecdsa_signature.r = ByteBuffer(signature.begin(), signature_delimiter);
+        ecdsa_signature.s = ByteBuffer(signature_delimiter, signature.end());
+        return ecdsa_signature;
+    };
+
+    if (digest.size() == 32) {
+        DigestEcdsa<32>::Signer signer(key);
+        return calculate_signature(&signer);
+    } else if (digest.size() == 48) {
+        DigestEcdsa<48>::Signer signer(key);
+        return calculate_signature(&signer);
+    } else {
+        return dummy;
+    }
+}
+
 bool BackendCryptoPP::verify_data(const ecdsa256::PublicKey& generic_key, const ByteBuffer& msg, const EcdsaSignature& sig)
 {
     const ByteBuffer sigbuf = extract_signature_buffer(sig);
-    return verify_data(m_public_cache[generic_key], msg, sigbuf);
+    return verify_data(internal_public_key(generic_key), msg, sigbuf);
 }
 
 bool BackendCryptoPP::verify_digest(const PublicKey& public_key, const ByteBuffer& digest, const Signature& sig)
@@ -253,27 +349,18 @@ boost::optional<Uncompressed> BackendCryptoPP::decompress_point(const EccPoint& 
     }
 }
 
-ByteBuffer BackendCryptoPP::calculate_hash(KeyType key, const ByteBuffer& buffer)
+ByteBuffer BackendCryptoPP::calculate_hash(HashAlgorithm algo_id, const ByteBuffer& buffer)
 {
     ByteBuffer hash;
-    switch (key) {
-        case KeyType::NistP256:
-        case KeyType::BrainpoolP256r1: {
-            CryptoPP::SHA256 algo;
-            hash.resize(algo.DigestSize());
-            algo.CalculateDigest(hash.data(), buffer.data(), buffer.size());
-            break;
-        }
-        case KeyType::BrainpoolP384r1: {
-            CryptoPP::SHA384 algo;
-            hash.resize(algo.DigestSize());
-            algo.CalculateDigest(hash.data(), buffer.data(), buffer.size());
-            break;
-        }
-        default:
-            break;
+    if (algo_id == HashAlgorithm::SHA256) {
+        CryptoPP::SHA256 algo;
+        hash.resize(algo.DigestSize());
+        algo.CalculateDigest(hash.data(), buffer.data(), buffer.size());
+    } else if (algo_id == HashAlgorithm::SHA384) {
+        CryptoPP::SHA384 algo;
+        hash.resize(algo.DigestSize());
+        algo.CalculateDigest(hash.data(), buffer.data(), buffer.size());
     }
-
     return hash;
 }
 

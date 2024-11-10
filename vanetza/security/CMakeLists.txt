@@ -2,14 +2,17 @@ add_vanetza_component(security
     backend.cpp
     backend_null.cpp
     cam_ssp.cpp
+    decap_service.cpp
     delegating_security_entity.cpp
     ecc_point.cpp
     ecdsa256.cpp
+    encap_service.cpp
     hashed_id.cpp
     hmac.cpp
+    key_type.cpp
+    peer_request_tracker.cpp
     secured_message.cpp
     sha.cpp
-    sign_service.cpp
     signature.cpp
     straight_verify_service.cpp
     verify_service.cpp
@@ -47,7 +50,9 @@ add_vanetza_component(security
     v3/basic_elements.cpp
     v3/certificate.cpp
     v3/certificate_cache.cpp
-    v3/default_certificate_validator.cpp
+    v3/certificate_validator.cpp
+    v3/distance.cpp
+    v3/hash.cpp
     v3/secured_message.cpp
     v3/sign_service.cpp
     v3/naive_certificate_provider.cpp
@@ -87,3 +92,4 @@ if(TARGET OpenSSL::Crypto)
 endif()
 
 add_test_subdirectory(tests)
+add_test_subdirectory(v3/tests)

@@ -15,9 +15,13 @@
 #include <vanetza/security/v3/certificate_cache.hpp>
 #include <vanetza/security/v3/certificate_provider.hpp>
 #include <vanetza/security/v3/certificate_validator.hpp>
+#include <vanetza/security/v3/hash.hpp>
 #include <vanetza/security/v3/sign_header_policy.hpp>
 #include <vanetza/security/v3/verification.hpp>
 #include <boost/optional.hpp>
+
+// asn1c quirk
+struct Vanetza_Security_Certificate : public Vanetza_Security_CertificateBase {};
 
 namespace vanetza
 {
@@ -66,7 +70,7 @@ void StraightVerifyService::use_certificate_provider(v2::CertificateProvider* pr
     m_context_v2.m_cert_provider = provider;
 }
 
-void StraightVerifyService::use_certitifcate_validator(v2::CertificateValidator* validator)
+void StraightVerifyService::use_certificate_validator(v2::CertificateValidator* validator)
 {
     m_context_v2.m_cert_validator = validator;
 }
@@ -74,11 +78,6 @@ void StraightVerifyService::use_certitifcate_validator(v2::CertificateValidator*
 void StraightVerifyService::use_sign_header_policy(v2::SignHeaderPolicy* policy)
 {
     m_context_v2.m_sign_policy = policy;
-}
-
-void StraightVerifyService::use_certificate_cache(v3::CertificateCache* cache)
-{
-    m_context_v3.m_cert_cache = cache;
 }
 
 void StraightVerifyService::use_certificate_provider(v3::CertificateProvider* provider)
@@ -399,41 +398,8 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         return confirm;
     }
 
-    v3::CertificateProvider* cert_provider = m_context_v3.m_cert_provider;
-    v3::CertificateCache* cert_cache = m_context_v3.m_cert_cache;
-    v3::CertificateValidator* cert_validator = m_context_v3.m_cert_validator;
-    v3::SignHeaderPolicy* sign_policy = m_context_v3.m_sign_policy;
-
-    // Check for P2PCD requests
-    // TODO: test this
-    if (cert_provider && sign_policy) {
-        std::list<HashedId3> requested_certs = msg.get_inline_p2pcd_request();
-        if (!requested_certs.empty()) {
-            // Calculate IDs of own certificates and certificate chain
-            auto own_cert_id = truncate(*cert_provider->own_certificate().calculate_digest());
-            auto own_chain = cert_provider->own_chain();
-            std::vector<HashedId3> own_chain_ids(own_chain.size());
-            std::transform(own_chain.begin(), own_chain.end(), own_chain_ids.begin(),
-                [](const v3::Certificate& cert) {
-                    return truncate(*cert.calculate_digest());
-                });
-
-            // Check if any of the requested certificates are available
-            for (const auto& requested_cert : requested_certs) {
-                if (own_cert_id == requested_cert) {
-                    sign_policy->request_certificate();
-                    continue;
-                }
-
-                const auto it = std::find(own_chain_ids.begin(), own_chain_ids.end(), requested_cert);
-                if (it != own_chain_ids.end()) {
-                    sign_policy->request_certificate_chain();
-                }
-            }
-        }
-    }
-
-    if (!v3::check_generation_time(msg, m_runtime.now())) {
+    auto gen_time = msg.generation_time();
+    if (!gen_time) {
         confirm.report = VerificationReport::Invalid_Timestamp;
         return confirm;
     }
@@ -446,7 +412,8 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
     }
 
     struct certificate_lookup_visitor : public boost::static_visitor<const v3::asn1::Certificate*> {
-        certificate_lookup_visitor(v3::CertificateCache* cache) : m_cache(cache)
+        certificate_lookup_visitor(v3::CertificateProvider* provider) :
+            m_cache(provider != nullptr ? &provider->cache() : nullptr)
         {
         }
 
@@ -467,26 +434,80 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         }
 
         v3::CertificateCache* m_cache;
-    } certificate_lookup_visitor(cert_cache);
+    } certificate_lookup_visitor(m_context_v3.m_cert_provider);
     auto signer_identifier = msg.signer_identifier();
 
     // track "known" stations
     auto maybe_digest = v3::get_certificate_id(signer_identifier);
-    if (cert_cache && maybe_digest) {
-        bool was_unknown_station = cert_cache->announce(*maybe_digest);
-        if (was_unknown_station && msg.its_aid() == aid::CA && sign_policy) {
+    if (m_context_v3.m_cert_provider && maybe_digest) {
+        bool was_unknown_station = m_context_v3.m_cert_provider->cache().announce(*maybe_digest);
+        if (was_unknown_station && msg.its_aid() == aid::CA && m_context_v3.m_sign_policy) {
             // CAM from unknown station received, add our certificate to next outgoing message
-            sign_policy->request_certificate();
+            m_context_v3.m_sign_policy->request_certificate();
+        }
+    }
+
+    // check if a ITS-AID 36 (CAM) with inline cert request shall be handled by us
+    if (msg.its_aid() == aid::CA && m_context_v3.m_sign_policy && m_context_v3.m_cert_provider) {
+        Vanetza_Security_SequenceOfHashedId3* requests = msg->content->choice.signedData->tbsData->headerInfo.inlineP2pcdRequest;
+        if (requests) {
+            for (int i = 0; i < requests->list.count; ++i)
+            {
+                const Vanetza_Security_HashedId3_t* req_digest = requests->list.array[i];
+                const HashedId3 hid3 = create_hashed_id3(*req_digest);
+                m_context_v3.m_sign_policy->enqueue_p2p_request(hid3);
+            }
+        }
+
+        Vanetza_Security_Certificate* included_cert = msg->content->choice.signedData->tbsData->headerInfo.requestedCertificate;
+        if (included_cert) {
+            auto maybe_digest = v3::calculate_digest(*included_cert);
+            if (maybe_digest) {
+                m_context_v3.m_sign_policy->discard_p2p_request(truncate(*maybe_digest));
+            }
         }
     }
 
     const v3::asn1::Certificate* certificate = boost::apply_visitor(certificate_lookup_visitor, signer_identifier);
     if (!certificate && maybe_digest) {
-        if (sign_policy) {
-            sign_policy->request_unrecognized_certificate(*maybe_digest);
+        if (msg.its_aid() == aid::CA && m_context_v3.m_sign_policy) {
+            // for received CAMs (having digest as signer identifier) with unknown AT we request the full AT certificate
+            m_context_v3.m_sign_policy->request_unrecognized_certificate(*maybe_digest);
         }
         confirm.report = VerificationReport::Signer_Certificate_Not_Found;
         return confirm;
+    }
+
+    // check AT certificate's validity
+    if (certificate && m_context_v3.m_cert_validator) {
+        auto verdict = m_context_v3.m_cert_validator->valid_for_signing(v3::CertificateView { certificate }, msg.its_aid());
+        if (verdict != v3::CertificateValidator::Verdict::Valid) {
+            confirm.report = VerificationReport::Invalid_Certificate;
+            return confirm;
+        }
+    }
+
+    boost::optional<HashedId8> aa_digest;
+    switch (certificate->issuer.present)
+    {
+        case Vanetza_Security_IssuerIdentifier_PR_sha256AndDigest:
+            aa_digest = v3::convert(certificate->issuer.choice.sha256AndDigest);
+            break;
+        case Vanetza_Security_IssuerIdentifier_PR_sha384AndDigest:
+            aa_digest = v3::convert(certificate->issuer.choice.sha384AndDigest);
+            break;
+        default:
+            break;
+    }
+
+    if (aa_digest && m_context_v3.m_cert_provider) {
+        if (!m_context_v3.m_cert_provider->cache().is_known(*aa_digest)) {
+            if (m_context_v3.m_sign_policy) {
+                // request unknown AA certificate for any received message signed with AT issued by this AA
+                m_context_v3.m_sign_policy->request_unrecognized_certificate(*aa_digest);
+            }
+        }
+        // TODO: if AA is validated and fails, announce it in cache
     }
 
     auto public_key = v3::get_public_key(*certificate);
@@ -496,52 +517,11 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
         return confirm;
     }
 
-    ByteBuffer encoded_cert;
-    try {
-        encoded_cert = asn1::encode_oer(asn_DEF_Vanetza_Security_CertificateBase, certificate);
-    } catch (...) {
-        confirm.report = VerificationReport::Invalid_Certificate;
-        return confirm;
-    }
-
-    v3::Certificate cert;
-    cert.decode(encoded_cert);
-    if (cert_validator) {
-        CertificateValidity validity = cert_validator->check_certificate(cert);
-        if (!validity) {
-            confirm.report = VerificationReport::Invalid_Certificate;
-            confirm.certificate_validity = validity;
-            return confirm;
-        }
-    }
-
-    // Check certificate time validity
-    if (!v3::check_certificate_time(cert, m_runtime.now())) {
-        confirm.report = VerificationReport::Invalid_Certificate;
-        confirm.certificate_validity = CertificateInvalidReason::Off_Time_Period;
-        return confirm;
-    }
-
-    // Check certificate region validity
-    if (!v3::check_certificate_region(cert, m_position_provider.position_fix())) {
-        confirm.report = VerificationReport::Invalid_Certificate;
-        confirm.certificate_validity = CertificateInvalidReason::Off_Region;
-        return confirm;
-    }
-
-    ByteBuffer data_hash = m_backend.calculate_hash(public_key->type, msg.signing_payload());
-    ByteBuffer cert_hash = m_backend.calculate_hash(public_key->type, encoded_cert);
-    ByteBuffer concat_hash = data_hash;
-    concat_hash.insert(concat_hash.end(), cert_hash.begin(), cert_hash.end());
-    ByteBuffer msg_hash = m_backend.calculate_hash(public_key->type, concat_hash);
-
+    ByteBuffer msg_hash = v3::calculate_message_hash(m_backend, msg.hash_id(),
+        msg.signing_payload(), v3::CertificateView { certificate });
     if (!m_backend.verify_digest(*public_key, msg_hash, *signature)) {
         confirm.report = VerificationReport::False_Signature;
         return confirm;
-    }
-
-    if (cert_cache) {
-        cert_cache->store(cert);
     }
 
     confirm.its_aid = msg.its_aid();
@@ -549,16 +529,17 @@ VerifyConfirm StraightVerifyService::verify(const v3::SecuredMessage& msg)
     confirm.certificate_id = maybe_digest;
     confirm.report = VerificationReport::Success;
 
-    if (cert_cache && confirm.certificate_id) {
-        bool already_cached = cert_cache->lookup(*confirm.certificate_id) != nullptr;
-        if (!already_cached && confirm.its_aid == aid::CA && sign_policy) {
+    if (m_context_v3.m_cert_provider && confirm.certificate_id) {
+        v3::CertificateCache& cache = m_context_v3.m_cert_provider->cache();
+        bool already_cached = cache.lookup(*confirm.certificate_id) != nullptr;
+        if (!already_cached && confirm.its_aid == aid::CA && m_context_v3.m_sign_policy) {
             // CAM from unknown station received, add our certificate to next outgoing message
-            sign_policy->request_certificate();
+            m_context_v3.m_sign_policy->request_certificate();
         }
 
         // update certificate cache with received certificate
         if (certificate && v3::contains_certificate(signer_identifier)) {
-            cert_cache->store(v3::Certificate { *certificate });
+            cache.store(v3::Certificate { *certificate });
         }
     }
 

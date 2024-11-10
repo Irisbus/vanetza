@@ -39,12 +39,15 @@ namespace
 
 struct ControlInfo
 {
-    ControlInfo(const DataRequest request) :
+    ControlInfo(const DataRequest& request) :
         communication_profile(request.communication_profile),
-        its_aid(request.its_aid) {}
+        its_aid(request.its_aid),
+        permissions(request.permissions)
+    {}
 
     const CommunicationProfile communication_profile;
     const ItsAid its_aid;
+    const ByteBuffer permissions;
 };
 
 template<typename PDU>
@@ -246,7 +249,11 @@ DataConfirm Router::request(const ShbDataRequest& request, DownPacketPtr payload
 
             // step 2: encapsulate packet by security
             if (m_mib.itsGnSecurity) {
-                payload = encap_packet(ctrl.its_aid, *pdu, std::move(payload));
+                payload = encap_packet(ctrl.its_aid, ctrl.permissions, *pdu, std::move(payload));
+                if (!payload) {
+                    // stop because encapsulation failed
+                    return;
+                }
             }
 
             // step 5: execute media-dependent procedures
@@ -311,7 +318,11 @@ DataConfirm Router::request(const GbcDataRequest& request, DownPacketPtr payload
         // step 5: apply security
         if (m_mib.itsGnSecurity) {
             assert(pdu->basic().next_header == NextHeaderBasic::Secured);
-            payload = encap_packet(ctrl.its_aid, *pdu, std::move(payload));
+            payload = encap_packet(ctrl.its_aid, ctrl.permissions, *pdu, std::move(payload));
+            if (!payload) {
+                // stop because encapsulation failed
+                return;
+            }
         }
 
         // step 6: repetition is already set-up before
@@ -398,11 +409,10 @@ void Router::indicate_basic(IndicationContextBasic& ctx)
         indication.remaining_hop_limit = basic->hop_limit;
 
         if (basic->next_header == NextHeaderBasic::Secured) {
-            indication.security_report = security::DecapReport::Incompatible_Protocol;
             indicate_secured(ctx, *basic);
         } else if (basic->next_header == NextHeaderBasic::Common) {
             if (!m_mib.itsGnSecurity || SecurityDecapHandling::Non_Strict == m_mib.itsGnSnDecapResultHandling) {
-                indication.security_report = security::DecapReport::Unsigned_Message,
+                indication.security_report = boost::blank {}; /*< not secured at all*/
                 indicate_common(ctx, *basic);
             } else {
                 packet_dropped(PacketDropReason::Decap_Unsuccessful_Strict);
@@ -493,31 +503,16 @@ void Router::indicate_secured(IndicationContextBasic& ctx, const BasicHeader& ba
         secured_payload_visitor visitor(*this, ctx, basic);
 
         // check whether the received packet is valid
-        if (DecapReport::Success == decap_confirm.report) {
+        if (is_successful(decap_confirm.report)) {
             boost::apply_visitor(visitor, decap_confirm.plaintext_payload);
         } else if (SecurityDecapHandling::Non_Strict == m_mib.itsGnSnDecapResultHandling) {
-            // according to ETSI EN 302 636-4-1 v1.2.1 section 9.3.3 Note 2
-            // handle the packet anyway, when itsGnDecapResultHandling is set to NON-Strict (1)
-            switch (decap_confirm.report) {
-                case DecapReport::False_Signature:
-                case DecapReport::Invalid_Certificate:
-                case DecapReport::Revoked_Certificate:
-                case DecapReport::Inconsistant_Chain:
-                case DecapReport::Invalid_Timestamp:
-                case DecapReport::Invalid_Mobility_Data:
-                case DecapReport::Unsigned_Message:
-                case DecapReport::Signer_Certificate_Not_Found:
-                case DecapReport::Unsupported_Signer_Identifier_Type:
-                case DecapReport::Unencrypted_Message:
-                    // ok, continue
-                    boost::apply_visitor(visitor, decap_confirm.plaintext_payload);
-                    break;
-                case DecapReport::Duplicate_Message:
-                case DecapReport::Incompatible_Protocol:
-                case DecapReport::Decryption_Error:
-                default:
-                    packet_dropped(PacketDropReason::Decap_Unsuccessful_Non_Strict);
-                    break;
+            // Any packet is passed up with NON-STRICT decapsulation handling
+            // -> see ETSI EN 302 636-4-1 v1.4.1 Section 10.3.3 Note 3
+            if (!decap_confirm.plaintext_payload.empty()) {
+                boost::apply_visitor(visitor, decap_confirm.plaintext_payload);
+            } else {
+                // no payload extracted from secured message to pass up
+                packet_dropped(PacketDropReason::Decap_Unsuccessful_Non_Strict);
             }
         } else {
             // discard packet
@@ -724,7 +719,11 @@ void Router::on_beacon_timer_expired()
 
     if (m_mib.itsGnSecurity) {
         pdu->basic().next_header = NextHeaderBasic::Secured;
-        payload = encap_packet(aid::GN_MGMT, *pdu, std::move(payload));
+        payload = encap_packet(aid::GN_MGMT, ByteBuffer {}, *pdu, std::move(payload));
+        if (!payload) {
+            // stop because encapsulation failed
+            return;
+        }
     } else {
         pdu->basic().next_header = NextHeaderBasic::Common;
     }
@@ -1338,26 +1337,50 @@ std::unique_ptr<GbcPdu> Router::create_gbc_pdu(const GbcDataRequest& request)
     return pdu;
 }
 
-Router::DownPacketPtr Router::encap_packet(ItsAid its_aid, Pdu& pdu, DownPacketPtr packet)
+Router::DownPacketPtr Router::encap_packet(ItsAid its_aid, ByteBuffer ssp, Pdu& pdu, DownPacketPtr packet)
 {
-    security::EncapRequest encap_request;
-
-    DownPacket sec_payload;
-    sec_payload[OsiLayer::Network] = SecuredPdu(pdu);
-    sec_payload.merge(*packet, OsiLayer::Transport, max_osi_layer());
-    encap_request.plaintext_payload = std::move(sec_payload);
-    encap_request.its_aid = its_aid;
-
     if (m_security_entity) {
-        security::EncapConfirm confirm = m_security_entity->encapsulate_packet(std::move(encap_request));
-        pdu.secured(std::move(confirm.sec_packet));
-    } else {
-        throw std::runtime_error("security entity unavailable");
-    }
+        DownPacket sec_payload;
+        sec_payload[OsiLayer::Network] = SecuredPdu(pdu);
+        sec_payload.merge(*packet, OsiLayer::Transport, max_osi_layer());
 
-    assert(size(*packet, OsiLayer::Transport, max_osi_layer()) == 0);
-    assert(pdu.basic().next_header == NextHeaderBasic::Secured);
-    return packet;
+        security::SignRequest sign_request;
+        sign_request.plain_message = std::move(sec_payload);
+        sign_request.its_aid = its_aid;
+        sign_request.permissions = std::move(ssp);
+
+        security::EncapConfirm confirm = m_security_entity->encapsulate_packet(std::move(sign_request));
+
+        struct Visitor : boost::static_visitor<DownPacketPtr>
+        {
+            Visitor(DownPacketPtr packet, Pdu& pdu) : m_packet(std::move(packet)), m_pdu(pdu)
+            {
+                assert(size(*m_packet, OsiLayer::Transport, max_osi_layer()) == 0);
+                assert(m_pdu.basic().next_header == NextHeaderBasic::Secured);
+            }
+
+            DownPacketPtr operator() (security::SecuredMessage& msg)
+            {
+                m_pdu.secured(std::move(msg));
+                return std::move(m_packet);
+            }
+
+            DownPacketPtr operator() (security::SignConfirmError signing_error)
+            {
+                // SN-SIGN encapsulation failed
+                return nullptr;
+            }
+
+            DownPacketPtr m_packet;
+            Pdu& m_pdu;
+        };
+
+        Visitor visitor(std::move(packet), pdu);
+        return boost::apply_visitor(visitor, confirm);
+    } else {
+        // security entity is not available
+        return nullptr;
+    }
 }
 
 std::string stringify(Router::PacketDropReason pdr)

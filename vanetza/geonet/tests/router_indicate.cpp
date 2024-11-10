@@ -6,18 +6,21 @@
 #include <vanetza/geonet/tests/fake_interfaces.hpp>
 #include <vanetza/geonet/tests/security_context.hpp>
 
+#include "decap_report_printer.hpp"
+
 using namespace vanetza;
 
 class RouterIndicate : public ::testing::Test
 {
 public:
     RouterIndicate() :
-        runtime(Clock::at("2010-12-23 18:29")), security(runtime), router(runtime, mib), packet_drop_occurred(false) {}
+        // AT certificate is valid at this time
+        runtime(Clock::at("2019-11-21 14:27:53")), security(runtime), router(runtime, mib), packet_drop_occurred(false) {}
 
 protected:
     virtual void SetUp() override
     {
-        runtime.trigger(Clock::at("2010-12-23 18:30"));
+        runtime.trigger(Clock::at("2019-11-21 14:27:54"));
         geonet::Address gn_addr;
         gn_addr.mid(MacAddress { 0, 0, 0, 0, 0, 1});
         router.set_address(gn_addr);
@@ -405,7 +408,7 @@ TEST_F(RouterIndicate, shb_secured_v3_message_digest)
     router.set_transport_handler(geonet::UpperProtocol::IPv6, nullptr);
 
     // set time so that message is not expired
-    runtime.trigger(Clock::at("2019-11-21 13:28"));
+    runtime.reset(Clock::at("2019-11-21 13:28"));
 
     // message with digest will not be accepted because its certificate is unknown
     EXPECT_EQ(security.certificate_cache_v3().size(), 0);
@@ -446,7 +449,7 @@ TEST_F(RouterIndicate, shb_secured_v3_message_digest)
     // assure that packet has been passed to transport layer
     ASSERT_TRUE(ind_ifc.m_last_indication);
     EXPECT_EQ(ind_ifc.m_last_indication->upper_protocol, geonet::UpperProtocol::BTP_B);
-    EXPECT_EQ(ind_ifc.m_last_indication->security_report, security::DecapReport::Success);
+    EXPECT_EQ(ind_ifc.m_last_indication->security_report, security::VerificationReport::Success);
     EXPECT_EQ(ind_ifc.m_last_indication->its_aid, aid::CA);
 
     ASSERT_TRUE(ind_ifc.m_last_packet);
@@ -504,7 +507,7 @@ TEST_F(RouterIndicate, shb_secured_v3_message_certificate)
     router.set_transport_handler(geonet::UpperProtocol::IPv6, nullptr);
 
     // set time so that message is not expired
-    runtime.trigger(Clock::at("2019-11-21 13:28:02"));
+    runtime.reset(Clock::at("2019-11-21 13:28:02"));
 
     router.indicate(get_up_packet(gn_buffer), mac_address_sender, mac_address_destination);
 
@@ -514,7 +517,7 @@ TEST_F(RouterIndicate, shb_secured_v3_message_certificate)
     // assure that packet has been passed to transport layer
     ASSERT_TRUE(ind_ifc.m_last_indication);
     EXPECT_EQ(ind_ifc.m_last_indication->upper_protocol, geonet::UpperProtocol::BTP_B);
-    EXPECT_EQ(ind_ifc.m_last_indication->security_report, security::DecapReport::Success);
+    EXPECT_EQ(ind_ifc.m_last_indication->security_report, security::VerificationReport::Success);
     EXPECT_EQ(ind_ifc.m_last_indication->its_aid, aid::CA);
 
     ASSERT_TRUE(ind_ifc.m_last_packet);

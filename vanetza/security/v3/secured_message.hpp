@@ -6,7 +6,8 @@
 #include <vanetza/common/archives.hpp>
 #include <vanetza/common/its_aid.hpp>
 #include <vanetza/net/packet_variant.hpp>
-#include <vanetza/security/ecdsa256.hpp>
+// #include <vanetza/security/ecdsa256.hpp>
+#include <vanetza/security/hash_algorithm.hpp>
 #include <vanetza/security/hashed_id.hpp>
 #include <vanetza/security/signature.hpp>
 #include <vanetza/security/v3/asn1_types.hpp>
@@ -44,12 +45,14 @@ struct SecuredMessage : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Data>
     boost::optional<Signature> signature() const;
     SignerIdentifier signer_identifier() const;
     ByteBuffer signing_payload() const;
+    HashAlgorithm hash_id() const;
 
     void set_its_aid(ItsAid its_aid);
     void set_generation_time(Time64 time);
     void set_generation_location(const asn1::ThreeDLocation& location);
-    void set_payload(ByteBuffer& payload);
+    void set_payload(const ByteBuffer& payload);
     void set_external_payload_hash(const Sha256Digest& hash);
+    void set_hash_id(HashAlgorithm);
     void set_signature(const Signature& signature);
     std::list<HashedId3> get_inline_p2pcd_request() const;
     void set_inline_p2pcd_request(std::list<HashedId3> requests);
@@ -58,6 +61,7 @@ struct SecuredMessage : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Data>
     void set_dummy_signature();
     void set_signer_identifier(const HashedId8&);
     void set_signer_identifier(const Certificate&);
+    void set_requested_certificate(const Certificate&);
 
     void get_aes_ccm_ciphertext(ByteBuffer& ccm_ciphertext, std::array<uint8_t, 12>& nonce) const;
     void set_aes_ccm_ciphertext(const ByteBuffer& ccm_ciphertext, const std::array<uint8_t, 12>& nonce);

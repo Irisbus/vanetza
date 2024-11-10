@@ -1,7 +1,6 @@
 #ifndef BACKEND_CRYPTOPP_HPP_JQWA9MLZ
 #define BACKEND_CRYPTOPP_HPP_JQWA9MLZ
 
-#include <vanetza/common/lru_cache.hpp>
 #include <vanetza/security/backend.hpp>
 #include <cryptopp/eccrypto.h>
 #include <cryptopp/osrng.h>
@@ -25,6 +24,9 @@ public:
     /// \see Backend::sign_data
     EcdsaSignature sign_data(const ecdsa256::PrivateKey& private_key, const ByteBuffer& data_buffer) override;
 
+    /// \see Backend::sign_digest
+    Signature sign_digest(const PrivateKey&, const ByteBuffer& digest) override;
+
     /// \see Backend::verify_data
     bool verify_data(const ecdsa256::PublicKey& public_key, const ByteBuffer& data, const EcdsaSignature& sig) override;
 
@@ -35,7 +37,7 @@ public:
     boost::optional<Uncompressed> decompress_point(const EccPoint& ecc_point) override;
 
     /// \see Backend::calculate_hash
-    ByteBuffer calculate_hash(KeyType, const ByteBuffer&) override;
+    ByteBuffer calculate_hash(HashAlgorithm, const ByteBuffer&) override;
 
     /**
      * \brief generate a private key and the corresponding public key
@@ -63,8 +65,6 @@ private:
     Ecdsa256::PrivateKey internal_private_key(const ecdsa256::PrivateKey&);
 
     CryptoPP::AutoSeededRandomPool m_prng;
-    LruCache<ecdsa256::PrivateKey, Ecdsa256::PrivateKey> m_private_cache;
-    LruCache<ecdsa256::PublicKey, Ecdsa256::PublicKey> m_public_cache;
 };
 
 } // namespace security

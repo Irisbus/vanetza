@@ -46,7 +46,7 @@ public:
 
     void use_certificate_cache(v2::CertificateCache*);
     void use_certificate_provider(v2::CertificateProvider*);
-    void use_certitifcate_validator(v2::CertificateValidator*);
+    void use_certificate_validator(v2::CertificateValidator*);
     void use_sign_header_policy(v2::SignHeaderPolicy*);
 
     void use_certificate_provider(v3::CertificateProvider*);

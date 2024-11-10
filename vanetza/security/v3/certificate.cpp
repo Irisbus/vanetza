@@ -1,6 +1,8 @@
 #include <vanetza/security/v3/asn1_conversions.hpp>
 #include <vanetza/security/sha.hpp>
+#include <vanetza/security/v3/asn1_conversions.hpp>
 #include <vanetza/security/v3/certificate.hpp>
+#include <vanetza/security/v3/distance.hpp>
 #include <boost/optional/optional.hpp>
 #include <cassert>
 #include <cstring>
@@ -31,55 +33,224 @@ bool make_signature_x_only(Vanetza_Security_Signature_t& sig);
 
 } // namespace
 
-Certificate::Certificate() :
-    asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificate>(asn_DEF_Vanetza_Security_EtsiTs103097Certificate)
+CertificateView::CertificateView(const asn1::EtsiTs103097Certificate* cert) :
+    m_cert(cert)
 {
+}
+
+Certificate::Certificate() :
+    Wrapper(asn_DEF_Vanetza_Security_EtsiTs103097Certificate),
+    CertificateView { content() }
+{
+    assert(CertificateView::m_cert == Wrapper::m_struct);
 }
 
 Certificate::Certificate(const asn1::EtsiTs103097Certificate& cert) :
-    asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificate>(asn_DEF_Vanetza_Security_EtsiTs103097Certificate, &cert)
+    Wrapper(asn_DEF_Vanetza_Security_EtsiTs103097Certificate, &cert),
+    CertificateView { content() }
 {
+    assert(CertificateView::m_cert == Wrapper::m_struct);
 }
 
-boost::optional<HashedId8> Certificate::calculate_digest() const
+Certificate::Certificate(const Certificate& other) :
+    Wrapper(other), CertificateView(content())
 {
-    return v3::calculate_digest(*content());
+    assert(CertificateView::m_cert == Wrapper::m_struct);
 }
 
-boost::optional<KeyType> Certificate::get_verification_key_type() const
+Certificate& Certificate::operator=(const Certificate& other)
 {
-    return v3::get_verification_key_type(*content());
+    Wrapper::operator=(other);
+    CertificateView::m_cert = content();
+    assert(CertificateView::m_cert == Wrapper::m_struct);
+    return *this;
 }
 
-StartAndEndValidity Certificate::get_start_and_end_validity() const
+Certificate::Certificate(Certificate&& other) :
+    Wrapper(std::move(other)), CertificateView(content())
+{
+    assert(CertificateView::m_cert == Wrapper::m_struct);
+}
+
+Certificate& Certificate::operator=(Certificate&& other)
+{
+    Wrapper::operator=(std::move(other));
+    CertificateView::m_cert = content();
+    assert(CertificateView::m_cert == Wrapper::m_struct);
+    return *this;
+}
+
+boost::optional<HashedId8> CertificateView::calculate_digest() const
+{
+    return m_cert ? v3::calculate_digest(*m_cert) : boost::none;
+}
+
+KeyType CertificateView::get_verification_key_type() const
+{
+    return m_cert ? v3::get_verification_key_type(*m_cert) : KeyType::Unspecified;
+}
+
+bool CertificateView::valid_at_location(const PositionFix& location) const
+{
+    return m_cert ? v3::valid_at_location(*m_cert, location) : false;
+}
+
+bool valid_at_location(const asn1::EtsiTs103097Certificate& cert, const PositionFix& location)
+{
+    const asn1::GeographicRegion* region = cert.toBeSigned.region;
+    if (region) {
+        switch (region->present) {
+            case Vanetza_Security_GeographicRegion_PR_circularRegion:
+                return is_inside(location, region->choice.circularRegion);
+            case Vanetza_Security_GeographicRegion_PR_rectangularRegion:
+                return is_inside(location, region->choice.rectangularRegion);
+            case Vanetza_Security_GeographicRegion_PR_polygonalRegion:
+                // not supported yet
+                return false;
+            case Vanetza_Security_GeographicRegion_PR_identifiedRegion:
+                // not supported yet
+                return false;
+            default:
+                // unknown region restriction
+                return false;
+        }
+    } else {
+        // no region restriction applies
+        return true;
+    }
+}
+
+bool CertificateView::valid_at_timepoint(const Clock::time_point& timepoint) const
+{
+    return m_cert ? v3::valid_at_timepoint(*m_cert, timepoint) : false;
+}
+
+bool valid_at_timepoint(const asn1::EtsiTs103097Certificate& cert, const Clock::time_point& timepoint)
+{
+    const asn1::ValidityPeriod& validity = cert.toBeSigned.validityPeriod;
+    Clock::time_point start { std::chrono::seconds(validity.start) };
+    Clock::time_point end = start;
+
+    switch (validity.duration.present)
+    {
+        case Vanetza_Security_Duration_PR_microseconds:
+            end += std::chrono::microseconds(validity.duration.choice.microseconds);
+            break;
+        case Vanetza_Security_Duration_PR_milliseconds:
+            end += std::chrono::milliseconds(validity.duration.choice.milliseconds);
+            break;
+        case Vanetza_Security_Duration_PR_seconds:
+            end += std::chrono::seconds(validity.duration.choice.seconds);
+            break;
+        case Vanetza_Security_Duration_PR_minutes:
+            end += std::chrono::minutes(validity.duration.choice.minutes);
+            break;
+        case Vanetza_Security_Duration_PR_hours:
+            end += std::chrono::hours(validity.duration.choice.hours);
+            break;
+        case Vanetza_Security_Duration_PR_sixtyHours:
+            end += std::chrono::hours(60) * validity.duration.choice.sixtyHours;
+            break;
+        case Vanetza_Security_Duration_PR_years:
+            // one year is considered 31556952 seconds according to IEEE 1609.2
+            end += std::chrono::seconds(31556952) * validity.duration.choice.years;
+            break;
+        default:
+            // leave end at start and thus forming an invalid range
+            break;
+    }
+    
+    return timepoint >= start && timepoint < end;
+}
+
+bool CertificateView::valid_for_application(ItsAid aid) const
+{
+    return m_cert ? v3::valid_for_application(*m_cert, aid) : false;
+}
+
+bool valid_for_application(const asn1::EtsiTs103097Certificate& cert, ItsAid aid)
+{
+    const asn1::SequenceOfPsidSsp* permissions = cert.toBeSigned.appPermissions;
+    if (permissions) {
+        for (int i = 0; i < permissions->list.count; ++i) {
+            if (permissions->list.array[i]->psid == aid) {
+                return true;
+            }
+        }
+    }
+
+    // only explicitly allowed applications are valid
+    return false;
+}
+
+boost::optional<HashedId8> CertificateView::issuer_digest() const
+{
+    boost::optional<HashedId8> digest;
+    if (m_cert != nullptr) {
+        switch (m_cert->issuer.present)
+        {
+            case Vanetza_Security_IssuerIdentifier_PR_sha256AndDigest:
+                digest = create_hashed_id8(m_cert->issuer.choice.sha256AndDigest);
+                break;
+            case Vanetza_Security_IssuerIdentifier_PR_sha384AndDigest:
+                digest = create_hashed_id8(m_cert->issuer.choice.sha384AndDigest);
+                break;
+            default:
+                break;
+        }
+    }
+    return digest;
+}
+
+bool CertificateView::has_region_restriction() const
+{
+    return m_cert ? m_cert->toBeSigned.region != nullptr : false;
+}
+
+bool CertificateView::is_ca_certificate() const
+{
+    return m_cert && m_cert->toBeSigned.certIssuePermissions != nullptr;
+}
+
+bool CertificateView::is_at_certificate() const
+{
+    return m_cert && m_cert->toBeSigned.certIssuePermissions == nullptr && m_cert->toBeSigned.appPermissions != nullptr;
+}
+
+bool CertificateView::is_canonical() const
+{
+    return m_cert ? v3::is_canonical(*m_cert) : false;
+}
+
+StartAndEndValidity CertificateView::get_start_and_end_validity() const
 {
     StartAndEndValidity start_and_end;
-    start_and_end.start_validity = Time32(m_struct->toBeSigned.validityPeriod.start);
+    start_and_end.start_validity = Time32(m_cert->toBeSigned.validityPeriod.start);
     Time32 duration = 0;
-    switch (m_struct->toBeSigned.validityPeriod.duration.present)
+    switch (m_cert->toBeSigned.validityPeriod.duration.present)
     {
     case Vanetza_Security_Duration_PR_NOTHING:
         break;
     case Vanetza_Security_Duration_PR_microseconds:
-        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.microseconds/1000000;
+        duration += (int)m_cert->toBeSigned.validityPeriod.duration.choice.microseconds/1000000;
         break;
     case Vanetza_Security_Duration_PR_milliseconds:
-        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.milliseconds/1000;
+        duration += (int)m_cert->toBeSigned.validityPeriod.duration.choice.milliseconds/1000;
         break;
     case Vanetza_Security_Duration_PR_seconds:
-        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.seconds;
+        duration += (int)m_cert->toBeSigned.validityPeriod.duration.choice.seconds;
         break;
     case Vanetza_Security_Duration_PR_minutes:
-        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.minutes*60;
+        duration += (int)m_cert->toBeSigned.validityPeriod.duration.choice.minutes*60;
         break;
     case Vanetza_Security_Duration_PR_hours:
-        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.hours*60*60;
+        duration += (int)m_cert->toBeSigned.validityPeriod.duration.choice.hours*60*60;
         break;
     case Vanetza_Security_Duration_PR_sixtyHours:
-        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.sixtyHours*60*60*60;
+        duration += (int)m_cert->toBeSigned.validityPeriod.duration.choice.sixtyHours*60*60*60;
         break;
     case Vanetza_Security_Duration_PR_years:
-        duration += (int)m_struct->toBeSigned.validityPeriod.duration.choice.years*60*60*24*365;
+        duration += (int)m_cert->toBeSigned.validityPeriod.duration.choice.years*60*60*24*365;
         break;
     default:
         break;
@@ -88,19 +259,19 @@ StartAndEndValidity Certificate::get_start_and_end_validity() const
     return start_and_end;
 }
 
-v2::GeographicRegion Certificate::get_region() const
+v2::GeographicRegion CertificateView::get_region() const
 {
     v2::GeographicRegion to_return = v2::NoneRegion();
-    if (!m_struct->toBeSigned.region) {
+    if (!m_cert->toBeSigned.region) {
         return to_return;
     }
 
     // ETSI TS 103 600 v1.2.1 5.2 - 1.7 requires handling of DENMs signed with
     // ATs containing certificate regional restrictions: id and circular
-    switch (m_struct->toBeSigned.region->present)
+    switch (m_cert->toBeSigned.region->present)
     {
     case Vanetza_Security_GeographicRegion_PR_circularRegion: {
-        Vanetza_Security_CircularRegion_t& region = m_struct->toBeSigned.region->choice.circularRegion;
+        Vanetza_Security_CircularRegion_t& region = m_cert->toBeSigned.region->choice.circularRegion;
         to_return = v2::CircularRegion {
             v2::TwoDLocation(
                 vanetza::units::GeoAngle((region.center.latitude/10000000)*boost::units::degree::degrees),
@@ -153,6 +324,21 @@ bool is_canonical(const asn1::EtsiTs103097Certificate& cert)
     }
 }
 
+ByteBuffer CertificateView::encode() const
+{
+    return m_cert ? asn1::encode_oer(asn_DEF_Vanetza_Security_EtsiTs103097Certificate, m_cert) : ByteBuffer {};
+}
+
+ByteBuffer Certificate::encode() const
+{
+    return Wrapper::encode();
+}
+
+boost::optional<Certificate> CertificateView::canonicalize() const
+{
+    return m_cert ? v3::canonicalize(*m_cert) : boost::none;
+}
+
 boost::optional<Certificate> canonicalize(const asn1::EtsiTs103097Certificate& cert)
 {
     Certificate canonical { cert };
@@ -175,6 +361,20 @@ boost::optional<Certificate> canonicalize(const asn1::EtsiTs103097Certificate& c
         }
     } else if (canonical->toBeSigned.verifyKeyIndicator.present == Vanetza_Security_VerificationKeyIndicator_PR_reconstructionValue) {
         success &= compress(canonical->toBeSigned.verifyKeyIndicator.choice.reconstructionValue);
+    }
+
+    if (canonical->toBeSigned.encryptionKey) {
+        Vanetza_Security_BasePublicEncryptionKey& pubkey = canonical->toBeSigned.encryptionKey->publicKey;
+        switch (pubkey.present) {
+            case Vanetza_Security_BasePublicEncryptionKey_PR_eciesNistP256:
+                success &= compress(pubkey.choice.eciesNistP256);
+                break;
+            case Vanetza_Security_BasePublicEncryptionKey_PR_eciesBrainpoolP256r1:
+                success &= compress(pubkey.choice.eciesBrainpoolP256r1);
+                break;
+            default:
+                break;
+        }
     }
 
     if (canonical->signature) {
@@ -219,22 +419,22 @@ boost::optional<HashedId8> calculate_digest(const asn1::EtsiTs103097Certificate&
 {
     boost::optional<HashedId8> digest;
     auto key_type = get_verification_key_type(cert);
-    if (key_type) {
+    if (key_type != KeyType::Unspecified) {
         if (is_canonical(cert)) {
-            digest = calculate_digest_internal(cert, *key_type);
+            digest = calculate_digest_internal(cert, key_type);
         } else {
             auto maybe_canonical_cert = canonicalize(cert);
             if (maybe_canonical_cert) {
-                digest = calculate_digest_internal(*maybe_canonical_cert.value(), *key_type);
+                digest = calculate_digest_internal(*maybe_canonical_cert.value(), key_type);
             }
         }
     }
     return digest;
 }
 
-boost::optional<KeyType> get_verification_key_type(const asn1::EtsiTs103097Certificate& cert)
+KeyType get_verification_key_type(const asn1::EtsiTs103097Certificate& cert)
 {
-    boost::optional<KeyType> key_type;
+    KeyType key_type = KeyType::Unspecified;
 
     if (cert.toBeSigned.verifyKeyIndicator.present == Vanetza_Security_VerificationKeyIndicator_PR_verificationKey)
     {
@@ -536,29 +736,6 @@ void Certificate::set_signature(const SomeEcdsaSignature& signature)
     };
 
     m_struct->signature = boost::apply_visitor(signature_visitor(), signature);
-}
-
-HashedId8 Certificate::get_issuer_identifier() const
-{
-    switch (m_struct->issuer.present) {
-        case Vanetza_Security_IssuerIdentifier_PR_self: {
-            auto own_hash = calculate_digest();
-            if (own_hash)
-                return *own_hash;
-            return HashedId8({0,0,0,0,0,0,0,0});
-        }
-        case Vanetza_Security_IssuerIdentifier_PR_sha256AndDigest:
-            return convert(m_struct->issuer.choice.sha256AndDigest);
-        case Vanetza_Security_IssuerIdentifier_PR_sha384AndDigest:
-            return convert(m_struct->issuer.choice.sha384AndDigest);
-        default:
-            return HashedId8({0,0,0,0,0,0,0,0});
-    }
-}
-
-bool Certificate::issuer_is_self() const
-{
-    return m_struct->issuer.present == Vanetza_Security_IssuerIdentifier_PR_self;
 }
 
 Certificate fake_certificate()

@@ -382,7 +382,7 @@ PacketVariant SecuredMessage::payload() const
     return CohesivePacket { std::move(buffer), OsiLayer::Network };
 }
 
-void SecuredMessage::set_payload(ByteBuffer& payload)
+void SecuredMessage::set_payload(const ByteBuffer& payload)
 {
     switch (m_struct->content->present) {
         case Vanetza_Security_Ieee1609Dot2Content_PR_unsecuredData:
@@ -401,6 +401,42 @@ void SecuredMessage::set_external_payload_hash(const Sha256Digest& hash)
     ASN_STRUCT_RESET(asn_DEF_Vanetza_Security_HashedData, hashed_data);
     hashed_data->present = Vanetza_Security_HashedData_PR_sha256HashedData;
     OCTET_STRING_fromBuf(&hashed_data->choice.sha256HashedData, reinterpret_cast<const char*>(hash.data()), hash.size());
+}
+
+HashAlgorithm SecuredMessage::hash_id() const
+{
+    HashAlgorithm algo = HashAlgorithm::Unspecified;
+
+    const asn1::SignedData* signed_data = get_signed_data(m_struct);
+    if (signed_data) {
+        switch (signed_data->hashId) {
+            case Vanetza_Security_HashAlgorithm_sha256:
+                algo = HashAlgorithm::SHA256;
+                break;
+            case Vanetza_Security_HashAlgorithm_sha384:
+                algo = HashAlgorithm::SHA384;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return algo;
+}
+
+void SecuredMessage::set_hash_id(HashAlgorithm hash)
+{
+    assert(m_struct->content->present == Vanetza_Security_Ieee1609Dot2Content_PR_signedData);
+    switch (hash) {
+        case HashAlgorithm::SHA256:
+            m_struct->content->choice.signedData->hashId = Vanetza_Security_HashAlgorithm_sha256;
+            break;
+        case HashAlgorithm::SHA384:
+            m_struct->content->choice.signedData->hashId = Vanetza_Security_HashAlgorithm_sha384;
+            break;
+        default:
+            m_struct->content->choice.signedData->hashId = -1;
+    }
 }
 
 void SecuredMessage::set_signer_identifier(const HashedId8& digest)
@@ -603,6 +639,18 @@ ByteBuffer SecuredMessage::signing_payload() const
         return asn1::encode_oer(asn_DEF_Vanetza_Security_ToBeSignedData, signed_data->tbsData);
     } else {
         return ByteBuffer {};
+    }
+}
+
+void SecuredMessage::set_requested_certificate(const Certificate& cert)
+{
+    const asn1::SignedData* signed_data = get_signed_data(m_struct);
+    if (signed_data && signed_data->tbsData) {
+        if (signed_data->tbsData->headerInfo.requestedCertificate) {
+            ASN_STRUCT_FREE(asn_DEF_Vanetza_Security_Certificate, signed_data->tbsData->headerInfo.requestedCertificate);
+        }
+        signed_data->tbsData->headerInfo.requestedCertificate =
+            static_cast<Vanetza_Security_Certificate*>(asn1::copy(asn_DEF_Vanetza_Security_Certificate, cert.content()));
     }
 }
 

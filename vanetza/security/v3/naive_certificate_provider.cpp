@@ -52,16 +52,13 @@ const Certificate& NaiveCertificateProvider::own_certificate()
     return m_own_certificate;
 }
 
-std::list<Certificate> NaiveCertificateProvider::own_chain()
+const PrivateKey& NaiveCertificateProvider::own_private_key()
 {
-    static const std::list<Certificate> chain = { aa_certificate() };
-
-    return chain;
-}
-
-const ecdsa256::PrivateKey& NaiveCertificateProvider::own_private_key()
-{
-    return m_own_key_pair.private_key;
+    static PrivateKey private_key;
+    private_key.type = KeyType::NistP256;
+    private_key.key.resize(m_own_key_pair.private_key.key.size());
+    std::copy(m_own_key_pair.private_key.key.begin(), m_own_key_pair.private_key.key.end(), private_key.key.data());
+    return private_key;
 }
 
 const ecdsa256::KeyPair& NaiveCertificateProvider::aa_key_pair()
@@ -99,7 +96,8 @@ Certificate NaiveCertificateProvider::generate_authorization_ticket()
     // create certificate
     Certificate certificate;
 
-    Certificate aa_certificate = this->aa_certificate();
+    const Certificate& aa_certificate = this->aa_certificate();
+
     // section 6 in TS 103 097 v2.1.1
     certificate->issuer.present= Vanetza_Security_IssuerIdentifier_PR_sha256AndDigest;
     auto maybe_aa_cert_digest = aa_certificate.calculate_digest();

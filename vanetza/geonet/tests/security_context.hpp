@@ -12,7 +12,9 @@
 #include <vanetza/security/v2/sign_header_policy.hpp>
 #include <vanetza/security/v2/sign_service.hpp>
 #include <vanetza/security/v2/trust_store.hpp>
-#include <vanetza/security/v3/certificate_cache.hpp>
+#include <vanetza/security/v3/certificate_validator.hpp>
+#include <vanetza/security/v3/naive_certificate_provider.hpp>
+#include <vanetza/security/v3/sign_header_policy.hpp>
 
 namespace vanetza
 {
@@ -22,16 +24,22 @@ class SecurityContext
 public:
     SecurityContext(Runtime& rt) :
         backend(security::create_backend("default")),
-        certificate_provider(new security::v2::NaiveCertificateProvider(rt)),
+        certificate_provider(rt),
         cert_cache(rt),
-        certificate_validator(new security::v2::DefaultCertificateValidator(*backend, cert_cache, trust_store)),
+        certificate_validator(*backend, cert_cache, trust_store),
         sign_header_policy(rt, position_provider),
+        certificate_provider_v3(rt),
+        sign_header_policy_v3(rt, position_provider, certificate_provider_v3),
         security(build_sign_service(), build_verify_service(rt))
     {
-        trust_store.insert(certificate_provider->root_certificate());
-        for (auto cert : certificate_provider->own_chain()) {
+        trust_store.insert(certificate_provider.root_certificate());
+        for (auto cert : certificate_provider.own_chain()) {
             cert_cache.insert(cert);
         }
+
+        // wire up v3 certificate validator
+        certificate_validator_v3.use_runtime(&rt);
+        certificate_validator_v3.use_position_provider(&position_provider);
     }
 
     security::SecurityEntity& entity()
@@ -52,7 +60,7 @@ public:
 
     security::v3::CertificateCache& certificate_cache_v3()
     {
-        return cert_cache_v3;
+        return certificate_provider_v3.cache();
     }
 
 private:
@@ -62,29 +70,37 @@ private:
             new security::StraightVerifyService(rt, *backend, position_provider)
         };
         service->use_certificate_cache(&cert_cache);
-        service->use_certificate_provider(certificate_provider.get());
-        service->use_certitifcate_validator(certificate_validator.get());
+        service->use_certificate_provider(&certificate_provider);
+        service->use_certificate_validator(&certificate_validator);
         service->use_sign_header_policy(&sign_header_policy);
-        service->use_certificate_cache(&cert_cache_v3);
+
+        service->use_certificate_provider(&certificate_provider_v3);
+        service->use_certificate_validator(&certificate_validator_v3);
+        service->use_sign_header_policy(&sign_header_policy_v3);
         return service;
     }
 
     std::unique_ptr<security::SignService> build_sign_service()
     {
         return std::unique_ptr<security::SignService> {
-            new security::v2::StraightSignService(*certificate_provider, *backend, sign_header_policy)
+            new security::v2::StraightSignService(certificate_provider, *backend, sign_header_policy)
         };
     }
 
     StoredPositionProvider position_provider;
     std::unique_ptr<security::Backend> backend;
-    std::unique_ptr<security::v2::NaiveCertificateProvider> certificate_provider;
+
+    security::v2::NaiveCertificateProvider certificate_provider;
     std::vector<security::v2::Certificate> roots;
     security::v2::TrustStore trust_store;
     security::v2::CertificateCache cert_cache;
-    std::unique_ptr<security::v2::CertificateValidator> certificate_validator;
+    security::v2::DefaultCertificateValidator certificate_validator;
     security::v2::DefaultSignHeaderPolicy sign_header_policy;
-    security::v3::CertificateCache cert_cache_v3;
+    
+    security::v3::NaiveCertificateProvider certificate_provider_v3;
+    security::v3::DefaultSignHeaderPolicy sign_header_policy_v3;
+    security::v3::DefaultCertificateValidator certificate_validator_v3;
+    
     security::DelegatingSecurityEntity security;
 };
 
