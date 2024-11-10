@@ -1,5 +1,3 @@
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cam_functions.hpp.in ${CMAKE_CURRENT_SOURCE_DIR}/cam_functions.hpp)
-
 set(CXX_SOURCES
     cam_functions.cpp
     path_history.cpp

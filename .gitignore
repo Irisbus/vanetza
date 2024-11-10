@@ -1,6 +1,4 @@
-.vscode/
-build/
-build.asn1/
+build
 conanfile.pyc
 doxygen/html/
 www/
