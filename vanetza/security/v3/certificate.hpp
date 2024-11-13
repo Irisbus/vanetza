@@ -139,6 +139,8 @@ struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificat
     void add_cert_permission(asn1::PsidGroupPermissions* group_permission);
 
     void set_signature(const SomeEcdsaSignature& signature);
+    
+    bool issuer_is_self() const;
 };
 
 /**

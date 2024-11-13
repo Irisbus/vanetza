@@ -738,6 +738,11 @@ void Certificate::set_signature(const SomeEcdsaSignature& signature)
     m_struct->signature = boost::apply_visitor(signature_visitor(), signature);
 }
 
+bool Certificate::issuer_is_self() const
+{
+    return m_struct->issuer.present == Vanetza_Security_IssuerIdentifier_PR_self;
+}
+
 Certificate fake_certificate()
 {
     Certificate certi;
