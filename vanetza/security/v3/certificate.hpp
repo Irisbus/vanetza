@@ -9,7 +9,6 @@
 #include <vanetza/security/key_type.hpp>
 #include <vanetza/security/public_key.hpp>
 #include <vanetza/security/signature.hpp>
-#include <vanetza/security/v2/region.hpp>
 #include <vanetza/security/v3/asn1_types.hpp>
 #include <vanetza/security/v3/validity_restriction.hpp>
 #include <boost/optional/optional_fwd.hpp>
@@ -42,9 +41,7 @@ public:
      */
     boost::optional<HashedId8> calculate_digest() const;
 
-    StartAndEndValidity get_start_and_end_validity() const; // TODO
-
-    v2::GeographicRegion get_region() const; // TODO
+    StartAndEndValidity get_start_and_end_validity() const;
 
     KeyType get_verification_key_type() const;
 

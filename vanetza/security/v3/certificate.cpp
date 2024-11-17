@@ -1,4 +1,3 @@
-#include <vanetza/security/v3/asn1_conversions.hpp>
 #include <vanetza/security/sha.hpp>
 #include <vanetza/security/v3/asn1_conversions.hpp>
 #include <vanetza/security/v3/certificate.hpp>
@@ -257,39 +256,6 @@ StartAndEndValidity CertificateView::get_start_and_end_validity() const
     }
     start_and_end.end_validity = start_and_end.start_validity + duration;
     return start_and_end;
-}
-
-v2::GeographicRegion CertificateView::get_region() const
-{
-    v2::GeographicRegion to_return = v2::NoneRegion();
-    if (!m_cert->toBeSigned.region) {
-        return to_return;
-    }
-
-    // ETSI TS 103 600 v1.2.1 5.2 - 1.7 requires handling of DENMs signed with
-    // ATs containing certificate regional restrictions: id and circular
-    switch (m_cert->toBeSigned.region->present)
-    {
-    case Vanetza_Security_GeographicRegion_PR_circularRegion: {
-        Vanetza_Security_CircularRegion_t& region = m_cert->toBeSigned.region->choice.circularRegion;
-        to_return = v2::CircularRegion {
-            v2::TwoDLocation(
-                vanetza::units::GeoAngle((region.center.latitude/10000000)*boost::units::degree::degrees),
-                vanetza::units::GeoAngle((region.center.latitude/10000000)*boost::units::degree::degrees)
-            ),
-            geonet::distance_u16t::from_value(region.radius)
-        };
-        break;
-    }
-    case Vanetza_Security_GeographicRegion_PR_identifiedRegion:
-        // TODO
-        break;
-    default:
-        // TODO handle other region types
-        break;
-    }
-
-    return to_return;
 }
 
 bool is_canonical(const asn1::EtsiTs103097Certificate& cert)

@@ -17,7 +17,6 @@
 #include <vanetza/security/v3/certificate_validator.hpp>
 #include <vanetza/security/v3/hash.hpp>
 #include <vanetza/security/v3/sign_header_policy.hpp>
-#include <vanetza/security/v3/verification.hpp>
 #include <boost/optional.hpp>
 
 // asn1c quirk
