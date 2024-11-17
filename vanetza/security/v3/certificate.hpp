@@ -52,6 +52,12 @@ public:
     boost::optional<HashedId8> issuer_digest() const;
 
     /**
+     * Check if certificate is self-signed
+     * \return true if certificate is self-signed
+     */
+    bool issuer_is_self() const;
+
+    /**
      * Check if certificate is a Certification Authority certificate
      * \return true if certificate is a CA certificate
      */
@@ -136,8 +142,6 @@ struct Certificate : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Certificat
     void add_cert_permission(asn1::PsidGroupPermissions* group_permission);
 
     void set_signature(const SomeEcdsaSignature& signature);
-    
-    bool issuer_is_self() const;
 };
 
 /**

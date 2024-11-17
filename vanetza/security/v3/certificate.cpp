@@ -201,6 +201,11 @@ boost::optional<HashedId8> CertificateView::issuer_digest() const
     return digest;
 }
 
+bool CertificateView::issuer_is_self() const
+{
+    return m_cert->issuer.present == Vanetza_Security_IssuerIdentifier_PR_self;
+}
+
 bool CertificateView::has_region_restriction() const
 {
     return m_cert ? m_cert->toBeSigned.region != nullptr : false;
@@ -702,11 +707,6 @@ void Certificate::set_signature(const SomeEcdsaSignature& signature)
     };
 
     m_struct->signature = boost::apply_visitor(signature_visitor(), signature);
-}
-
-bool Certificate::issuer_is_self() const
-{
-    return m_struct->issuer.present == Vanetza_Security_IssuerIdentifier_PR_self;
 }
 
 Certificate fake_certificate()
