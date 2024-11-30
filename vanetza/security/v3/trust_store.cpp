@@ -11,7 +11,7 @@ namespace v3
 
 void TrustStore::insert(const Certificate& certificate)
 {
-    if (!certificate.is_ca_certificate()) {
+    if (!certificate.issuer_is_self()) {
         throw std::runtime_error("Only root certificate authorities may be added to the trust store");
     }
 
