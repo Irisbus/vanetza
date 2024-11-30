@@ -445,6 +445,14 @@ void SecuredMessage::set_hash_id(HashAlgorithm hash)
     }
 }
 
+void SecuredMessage::set_signer_identifier_self()
+{
+    assert(m_struct->content->present == Vanetza_Security_Ieee1609Dot2Content_PR_signedData);
+    asn1::SignerIdentifier* signer = &m_struct->content->choice.signedData->signer;
+    ASN_STRUCT_RESET(asn_DEF_Vanetza_Security_SignerIdentifier, signer);
+    signer->present = Vanetza_Security_SignerIdentifier_PR_self;
+}
+
 void SecuredMessage::set_signer_identifier(const HashedId8& digest)
 {
     assert(m_struct->content->present == Vanetza_Security_Ieee1609Dot2Content_PR_signedData);

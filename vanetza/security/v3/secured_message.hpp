@@ -59,6 +59,7 @@ struct SecuredMessage : public asn1::asn1c_oer_wrapper<asn1::EtsiTs103097Data>
     void add_inline_p2pcd_request(HashedId3 unkown_certificate_digest);
     void set_signature(const SomeEcdsaSignature& signature);
     void set_dummy_signature();
+    void set_signer_identifier_self();
     void set_signer_identifier(const HashedId8&);
     void set_signer_identifier(const Certificate&);
     void set_requested_certificate(const Certificate&);
