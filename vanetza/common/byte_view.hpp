@@ -23,7 +23,7 @@ public:
 
     byte_view_iterator() = default;
     explicit byte_view_iterator(pointer p) : m_iterator(p) {}
-    explicit byte_view_iterator(const ByteBuffer::const_iterator& it) : m_iterator(&*it) {}
+    explicit byte_view_iterator(const ByteBuffer::const_iterator& it) : m_iterator(it.operator->()) {}
 
     constexpr value_type operator*() const
     {
@@ -153,7 +153,7 @@ public:
      * \param buffer pass buffer via rvalue
      * \note View is valid without limitation
      */
-    byte_view_range(ByteBuffer&&);
+    explicit byte_view_range(ByteBuffer&&);
 
     /**
      * Get pointer to start of contiguous buffer memory
