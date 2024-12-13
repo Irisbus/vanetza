@@ -6,7 +6,6 @@
 #include <vanetza/common/archives.hpp>
 #include <vanetza/common/its_aid.hpp>
 #include <vanetza/net/packet_variant.hpp>
-// #include <vanetza/security/ecdsa256.hpp>
 #include <vanetza/security/hash_algorithm.hpp>
 #include <vanetza/security/hashed_id.hpp>
 #include <vanetza/security/signature.hpp>

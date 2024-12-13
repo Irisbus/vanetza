@@ -1,5 +1,4 @@
 #pragma once
-#include <vanetza/common/runtime.hpp>
 #include <vanetza/security/hashed_id.hpp>
 #include <vanetza/security/v3/certificate.hpp>
 #include <unordered_map>
