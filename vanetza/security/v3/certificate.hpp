@@ -10,7 +10,6 @@
 #include <vanetza/security/public_key.hpp>
 #include <vanetza/security/signature.hpp>
 #include <vanetza/security/v3/asn1_types.hpp>
-#include <vanetza/security/v3/validity_restriction.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <list>
 
@@ -40,8 +39,6 @@ public:
      * \return digest if possible
      */
     boost::optional<HashedId8> calculate_digest() const;
-
-    StartAndEndValidity get_start_and_end_validity() const;
 
     KeyType get_verification_key_type() const;
 
