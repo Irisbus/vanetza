@@ -99,8 +99,11 @@ void DefaultSignHeaderPolicy::prepare_header(const SignRequest& request, Secured
         // some structures in the SCR are self-signed
         if (request.self_signed)
             secured_message.set_signer_identifier_self();
-        else
-            secured_message.set_signer_identifier(m_cert_provider.own_certificate());
+        else {
+            const auto digest = m_cert_provider.own_certificate().calculate_digest();
+            if (digest)
+                secured_message.set_signer_identifier(*digest);
+        }
     } else {
         secured_message.set_signer_identifier(m_cert_provider.own_certificate());
     }
