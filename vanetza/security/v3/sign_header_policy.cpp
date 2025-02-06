@@ -95,9 +95,12 @@ void DefaultSignHeaderPolicy::prepare_header(const SignRequest& request, Secured
         secured_message.set_signer_identifier(m_cert_provider.own_certificate());
         secured_message.set_generation_location(build_location(m_positioning.position_fix()));
     } else if (request.its_aid == aid::SCR) {
-        // SCR service needs to set signer itself later, because signer depends
-        // on type of message being signed
-        secured_message.set_signer_identifier_self();
+        // section 6.2.3.2 and 6.2.3.3 in TS 102 941 v2.1.1
+        // some structures in the SCR are self-signed
+        if (request.self_signed)
+            secured_message.set_signer_identifier_self();
+        else
+            secured_message.set_signer_identifier(m_cert_provider.own_certificate());
     } else {
         secured_message.set_signer_identifier(m_cert_provider.own_certificate());
     }

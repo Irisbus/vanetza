@@ -28,6 +28,7 @@ struct SignRequest
     ItsAid its_aid;
     ByteBuffer permissions;
     bool external_payload = false;
+    bool self_signed = false;
 };
 
 enum class SignConfirmError
